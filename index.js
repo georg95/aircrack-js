@@ -1,4 +1,4 @@
-const crypto = require('crypto');
+const crypto = require('crypto')
 
 function customPRF512(key, X) {
     let R = Buffer.alloc(0) 
@@ -9,7 +9,7 @@ function customPRF512(key, X) {
     return R.subarray(0, 64)
 }
 
-function checkWPAPassword({ ssid, APmac, Clientmac, ANonce, SNonce, authenticatorMIC, eapolData }, password) {
+function checkWPA2Password({ ssid, APmac, Clientmac, ANonce, SNonce, authenticatorMIC, eapolData }, password) {
     const pmk = crypto.pbkdf2Sync(password, ssid, 4096, 32, 'sha1')
     const ptk = customPRF512(pmk, Buffer.concat([
         Buffer.from("Pairwise key expansion"),
@@ -19,17 +19,32 @@ function checkWPAPassword({ ssid, APmac, Clientmac, ANonce, SNonce, authenticato
         Buffer.from([0x00]),
     ]))
     const hmac = crypto.createHmac('sha1', ptk.subarray(0, 16)).update(eapolData)
-    return  Buffer.compare(hmac.digest().subarray(0, 16), authenticatorMIC) === 0
+    return Buffer.compare(hmac.digest().subarray(0, 16), authenticatorMIC) === 0
 }
+function checkWPAPassword({ ssid, APmac, Clientmac, pmkid }, password) {
+    const pmk = crypto.pbkdf2Sync(password, ssid, 4096, 32, 'sha1')
+    const hmac = crypto.createHmac('sha1', pmk)
+    hmac.update(Buffer.concat([Buffer.from('PMK Name'), APmac, Clientmac]))
+    return Buffer.compare(hmac.digest().subarray(0, 16), pmkid) === 0
+} 
 
 function parseHashcat22000(line) {
     const parts = line.split('*')
-    assert(parts.length >= 8 && parts[0] === 'WPA' && parts[1] === '02', 'Invalid hashcat 22000 format')
-    // assert(parts[parts.length - 1] === '02', 'Only WPA*02*...*02 version supported')
-
+    assert(parts.length >= 8 && parts[0] === 'WPA' && (parts[1] === '02' || parts[1] === '01'), 'Invalid hashcat 22000 format')
+    if (parts[1] === '01') {
+        return {
+            version: 1,
+            pmkid: hexToBuffer(parts[2]),
+            APmac: hexToBuffer(parts[3]),
+            Clientmac: hexToBuffer(parts[4]),
+            ssid: hexToString(parts[5]),
+        };
+    }
+    assert(parts[parts.length - 1] === '02' || parts[parts.length - 1] === '00', 'Only WPA*02*...*00/02 version supported')
     const eapolData = hexToBuffer(parts[7])
     assert(eapolData[0] === 0x01 && eapolData[1] === 0x03, 'eapolData should start with 0x0103')
     return {
+        version: 2,
         authenticatorMIC: hexToBuffer(parts[2]),
         APmac: hexToBuffer(parts[3]),
         Clientmac: hexToBuffer(parts[4]),
@@ -59,8 +74,17 @@ function assert(cond, text) {
 
 function test(hc22000, password) {
     const handshakeData = parseHashcat22000(hc22000)
-    console.log('handshakeData:', handshakeData)
-    if (checkWPAPassword(handshakeData, password)) {
+    // console.log('handshakeData:', handshakeData)
+    let checked = false
+    if (handshakeData.version === 2) {
+        checked = checkWPA2Password(handshakeData, password)
+    } else if (handshakeData.version === 1) {
+        checked = checkWPAPassword(handshakeData, password)
+    } else {
+        console.log('❌', hc22000.slice(0, 32)+'...', 'invalid version:', handshakeData.version)
+        return 
+    }
+    if (checked) {
         console.log('✅', hc22000.slice(0, 32)+'...', '==', password)
     } else {
         console.log('❌', hc22000.slice(0, 32)+'...', '!=', password)
@@ -70,5 +94,5 @@ test('WPA*02*d5355382b8a9b806dcaf99cdaf564eb6*00146c7e4080*001346fe320c*4861726b
     '12345678')
 test('WPA*02*6baba51340c8a83e2081af3b4bb64da9*00212972a319*002100ab55a9*4d4f4d31*14312696ea57a1c3ea614f7cb68b1455c3009c59a76d349b9a0ffe0d166d6ac2*0103007502010a0000000000000000000f069a5c6e3d9ef06f21e87023d72b4e05a3bac5338ac28495fdb8ce8566957bcb000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001630140100000fac020100000fac040100000fac020800*00',
     'MOM12345')
-// test('WPA*01*72189b473af24c5e4b90e69e7af2db5f*28107b94bb29*f0a2251dc881*6f676f676f***',
-//     '15211521')
+test('WPA*01*72189b473af24c5e4b90e69e7af2db5f*28107b94bb29*f0a2251dc881*6f676f676f***',
+    '15211521')
