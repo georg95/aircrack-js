@@ -18,8 +18,11 @@ function checkWPA2Password({ ssid, APmac, Clientmac, ANonce, SNonce, authenticat
         Buffer.compare(ANonce, SNonce) < 0 ? Buffer.concat([ANonce, SNonce]) : Buffer.concat([SNonce, ANonce]),
         Buffer.from([0x00]),
     ]))
-    const hmac = crypto.createHmac('sha1', ptk.subarray(0, 16)).update(eapolData)
-    return Buffer.compare(hmac.digest().subarray(0, 16), authenticatorMIC) === 0
+    let micAlg = eapolData.length >= 7 && ((eapolData.readUInt16BE(5) & 0x07) === 1) ? 'md5' : 'sha1'
+    eapolData.fill(0x00, 81, 81 + 16)
+    const hmac = crypto.createHmac(micAlg, ptk.subarray(0, 16)).update(eapolData).digest()
+    const computedMic = (micAlg === 'sha1') ? hmac.subarray(0, 16) : hmac
+    return Buffer.compare(computedMic, authenticatorMIC) === 0
 }
 function checkWPAPassword({ ssid, APmac, Clientmac, pmkid }, password) {
     const pmk = crypto.pbkdf2Sync(password, ssid, 4096, 32, 'sha1')
@@ -40,7 +43,6 @@ function parseHashcat22000(line) {
             ssid: hexToString(parts[5]),
         };
     }
-    assert(parts[parts.length - 1] === '02' || parts[parts.length - 1] === '00', 'Only WPA*02*...*00/02 version supported')
     const eapolData = hexToBuffer(parts[7])
     assert(eapolData[0] === 0x01 && eapolData[1] === 0x03, 'eapolData should start with 0x0103')
     return {
@@ -96,3 +98,5 @@ test('WPA*02*6baba51340c8a83e2081af3b4bb64da9*00212972a319*002100ab55a9*4d4f4d31
     'MOM12345')
 test('WPA*01*72189b473af24c5e4b90e69e7af2db5f*28107b94bb29*f0a2251dc881*6f676f676f***',
     '15211521')
+test('WPA*02*cc303dcc8fb0b285257353480a52c563*000d93ebb08c*00095b91535d*74657374*54adc644966dc8423d44364a1de9ec22415522bd0555ee718f8a53b8d679470c*0103005ffe010900200000000000000001fe5f0c5b5423815f35fe606720bbb9466d8601a8b4493af4cf5a0317f38c83870000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000*05', 
+    'biscotte')
