@@ -25,7 +25,7 @@ function checkWPAPassword({ ssid, APmac, Clientmac, ANonce, SNonce, authenticato
 function parseHashcat22000(line) {
     const parts = line.split('*')
     assert(parts.length >= 8 && parts[0] === 'WPA' && parts[1] === '02', 'Invalid hashcat 22000 format')
-    assert(parts[parts.length - 1] === '02', 'Only WPA*02*...*02 version supported')
+    // assert(parts[parts.length - 1] === '02', 'Only WPA*02*...*02 version supported')
 
     const eapolData = hexToBuffer(parts[7])
     assert(eapolData[0] === 0x01 && eapolData[1] === 0x03, 'eapolData should start with 0x0103')
@@ -57,11 +57,18 @@ function assert(cond, text) {
     }
 }
 
-function test() {
-    const hashLine = 'WPA*02*d5355382b8a9b806dcaf99cdaf564eb6*00146c7e4080*001346fe320c*4861726b6f6e656e*225854b0444de3af06d1492b852984f04cf6274c0e3218b8681756864db7a055*0103007502010a0010000000000000000159168bc3a5df18d71efb6423f340088dab9e1ba2bbc58659e07b3764b0de8570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001630140100000fac040100000fac040100000fac020100*02';
-    const handshakeData = parseHashcat22000(hashLine)
+function test(hc22000, password) {
+    const handshakeData = parseHashcat22000(hc22000)
     console.log('handshakeData:', handshakeData)
-    console.log(checkWPAPassword(handshakeData, "12345678") ? 'MATCH!' : 'no match')
+    if (checkWPAPassword(handshakeData, password)) {
+        console.log('✅', hc22000.slice(0, 32)+'...', '==', password)
+    } else {
+        console.log('❌', hc22000.slice(0, 32)+'...', '!=', password)
+    }
 }
-
-test()
+test('WPA*02*d5355382b8a9b806dcaf99cdaf564eb6*00146c7e4080*001346fe320c*4861726b6f6e656e*225854b0444de3af06d1492b852984f04cf6274c0e3218b8681756864db7a055*0103007502010a0010000000000000000159168bc3a5df18d71efb6423f340088dab9e1ba2bbc58659e07b3764b0de8570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001630140100000fac040100000fac040100000fac020100*02',
+    '12345678')
+test('WPA*02*6baba51340c8a83e2081af3b4bb64da9*00212972a319*002100ab55a9*4d4f4d31*14312696ea57a1c3ea614f7cb68b1455c3009c59a76d349b9a0ffe0d166d6ac2*0103007502010a0000000000000000000f069a5c6e3d9ef06f21e87023d72b4e05a3bac5338ac28495fdb8ce8566957bcb000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001630140100000fac020100000fac040100000fac020800*00',
+    'MOM12345')
+// test('WPA*01*72189b473af24c5e4b90e69e7af2db5f*28107b94bb29*f0a2251dc881*6f676f676f***',
+//     '15211521')
