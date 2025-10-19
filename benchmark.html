@@ -97,16 +97,17 @@ async function cpu_benchmark() {
         var CUR_OFFSET = 0
         const THREADS = navigator.hardwareConcurrency || 4
         const lastHashrates = Array(THREADS)
-        async function requestWork({ hashrate }) {
+        async function requestWork({ hashrate, id }) {
             if (CUR_OFFSET === null) {
                 resolve(null)
                 return
             }
-            lastHashrates.unshift(hashrate); lastHashrates.pop()
+            lastHashrates[id] = hashrate;
             avgHashrate = lastHashrates.reduce((a, b) => a+b, 0)
+            // log(`| ${lastHashrates.map(x => x.toFixed(1).padStart(4, ' ')).join(' | ')} | kH/s`, true)
             const passwords = numericPasswords(CUR_OFFSET, BATCH_SIZE)
             CUR_OFFSET += BATCH_SIZE
-            if (CUR_OFFSET >= BATCH_SIZE * THREADS * 6) {
+            if (CUR_OFFSET >= BATCH_SIZE * THREADS * 8) {
                 CUR_OFFSET = null
             }
             return passwords

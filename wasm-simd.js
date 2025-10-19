@@ -77,7 +77,7 @@ async function startWasmWorker(wasm, handshakeData, requestWork, onFound, i) {
         const { message, passwords, wasm, handshakeData } = e.data
         if (message === 'init') {
             pbkdf2_eapol = await pbkdf2_eapol_wasm(wasm, handshakeData)
-            self.postMessage({ message: 'work', hashrate: 0 })
+            self.postMessage({ message: 'work', id: WORKER_NUM, hashrate: 0 })
         }
         if (message === 'work') {
             brute(passwords)
@@ -92,11 +92,11 @@ async function startWasmWorker(wasm, handshakeData, requestWork, onFound, i) {
             const pass2 = buf.subarray(offsets[i + 1], buf.indexOf(10, offsets[i + 1]))
             const res = pbkdf2_eapol(pass1, pass2)
             if (res !== -1) {
-                self.postMessage({ message: 'found', password: new TextDecoder().decode(res === 0 ? pass1 : pass2) })
+                self.postMessage({ message: 'found', id: WORKER_NUM, password: new TextDecoder().decode(res === 0 ? pass1 : pass2) })
                 return
             }
         }
-        self.postMessage({ message: 'work', hashrate: count / (performance.now() - start) * 1000 | 0 })
+        self.postMessage({ message: 'work', id: WORKER_NUM, hashrate: count / (performance.now() - start) * 1000 | 0 })
     }
     `;
     const blob = new Blob([workerCode], { type: "application/javascript" })
