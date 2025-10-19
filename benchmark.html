@@ -96,6 +96,7 @@ async function cpu_benchmark() {
         }
         var CUR_OFFSET = 0
         const THREADS = navigator.hardwareConcurrency || 4
+        log(`[CPU] ${navigator.platform} | ${THREADS} threads`)
         const lastHashrates = Array(THREADS)
         async function requestWork({ hashrate, id }) {
             if (CUR_OFFSET === null) {
@@ -126,6 +127,7 @@ async function gpu_benchmark() {
     const MAX_BATCH_SIZE = 1024 * 256
     const WORKGROUP_SIZE = 64
     const gpu = await webGPUinit({ BUF_SIZE: MAX_BATCH_SIZE*MAX_PASSWORD_AVG_SIZE })
+    log(`[GPU] ${gpu.name}`)
 
     let maxSpeed = 0, spinner = 0
     const tr = document.getElementById('GPU')
