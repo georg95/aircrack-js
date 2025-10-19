@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aircrack web benchmark</title>
+  <script src="webgpu.js"></script>
+  <script src="wasm-simd.js"></script>
+</head>
+    <style>
+        html, body {
+            width: 100%;
+            box-sizing: border-box;
+            background-color: #222;
+            font-size: 15px;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            color: bisque;
+        }
+        html {
+            padding: 0;
+        }
+        body {
+            padding: 20px;
+        }
+        button {
+            background-color: #222;
+            color: bisque;
+            width: 100%;
+            height: 40px;
+            margin-top: 20px;
+        }
+        pre {
+            text-wrap: auto;
+        }
+        #bench_result {
+            width: 100%;
+            border: 1px solid bisque;
+            margin-top: 20px;
+        }
+        #bench_result th, #bench_result td {
+            padding: 10px;
+        }
+    </style>
+<body>
+    <button id="benchmark">Start benchmark</button>
+    <table id="bench_result">
+        <thead><th>mode</th><th>compilation</th><th>batch</th><th>speed</th></thead>
+    </table>
+    <pre id="output"></pre>
+</body>
+<script>
+window.benchmark.onclick = async () => {
+    window.benchmark.style.display = 'none'
+    await cpu_benchmark()
+    await gpu_benchmark()
+    log('✅ DONE')
+    window.benchmark.style.display = ''
+}
+
+for (let mode of ['CPU', 'GPU']) {
+    const tr = document.createElement('tr')
+    tr.innerHTML = "<td></td><td></td><td></td><td></td>"
+    tr.id = mode
+    tr.childNodes[0].innerText = mode
+    tr.childNodes[1].innerText = '-'
+    tr.childNodes[2].innerText = '-'
+    tr.childNodes[3].innerText = '-'
+    window.bench_result.appendChild(tr)
+}
+
+async function cpu_benchmark() {
+    const enc = new TextEncoder();
+    const password1 = enc.encode('MOM12344')
+    const password2 = enc.encode('MOM12345')
+    const HC22000 = 'WPA*02*6baba51340c8a83e2081af3b4bb64da9*00212972a319*002100ab55a9*4d4f4d31*14312696ea57a1c3ea614f7cb68b1455c3009c59a76d349b9a0ffe0d166d6ac2*0103007502010a0000000000000000000f069a5c6e3d9ef06f21e87023d72b4e05a3bac5338ac28495fdb8ce8566957bcb000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001630140100000fac020100000fac040100000fac020800*00'
+    const pbkdf2_eapol = await pbkdf2_eapol_wasm(parseHashcat22000(HC22000))
+    assert(pbkdf2_eapol(password1, password2) === 1, 'CPU wasm test failed')
+
+    const BATCH_SIZE = 500
+    const tr = document.getElementById('CPU')
+    tr.childNodes[1].innerText = `0s` // TODO measure
+    tr.childNodes[2].innerText = 500
+    let avgHashrate = 0, spinner = 0
+    const update = setInterval(() => {
+        tr.childNodes[3].innerText = `${(avgHashrate / 1000).toFixed(1)} kH/s ${SPINNER[(spinner++)%SPINNER.length]}`
+    }, 200)
+    await new Promise(async resolve => {
+        const HC22000 = 'WPA*02*6baba51340c8a83e2081af3b4bb64da9*00212972a319*002100ab55a9*4d4f4d31*14312696ea57a1c3ea614f7cb68b1455c3009c59a76d349b9a0ffe0d166d6ac2*0103007502010a0000000000000000000f069a5c6e3d9ef06f21e87023d72b4e05a3bac5338ac28495fdb8ce8566957bcb000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001630140100000fac020100000fac040100000fac020800*00'
+        const handshakeData = parseHashcat22000(HC22000)
+        const wasm = await fetch('pbkdf2_eapol.wasm').then(r => r.arrayBuffer())
+        function onFound(res) {
+            CUR_OFFSET = null
+            resolve(res.password)
+        }
+        var CUR_OFFSET = 0
+        const THREADS = navigator.hardwareConcurrency || 4
+        const lastHashrates = Array(THREADS)
+        async function requestWork({ hashrate }) {
+            if (CUR_OFFSET === null) {
+                resolve(null)
+                return
+            }
+            lastHashrates.unshift(hashrate); lastHashrates.pop()
+            avgHashrate = lastHashrates.reduce((a, b) => a+b, 0)
+            const passwords = numericPasswords(CUR_OFFSET, BATCH_SIZE)
+            CUR_OFFSET += BATCH_SIZE
+            if (CUR_OFFSET >= BATCH_SIZE * THREADS * 6) {
+                CUR_OFFSET = null
+            }
+            return passwords
+        }
+        for (var i = 0; i < THREADS; i++) {
+            startWasmWorker(wasm, handshakeData, requestWork, onFound, i)
+        }
+    })
+    tr.childNodes[3].innerText = `${(avgHashrate / 1000).toFixed(1)} kH/s`
+    clearInterval(update)
+}
+
+const SPINNER = ['|', '/', '-', '\\']
+async function gpu_benchmark() {
+    const MAX_PASSWORD_AVG_SIZE = 16
+    const MAX_BATCH_SIZE = 1024 * 256
+    const WORKGROUP_SIZE = 64
+    const gpu = await webGPUinit({ BUF_SIZE: MAX_BATCH_SIZE*MAX_PASSWORD_AVG_SIZE })
+
+    let maxSpeed = 0, spinner = 0
+    const tr = document.getElementById('GPU')
+    const start = performance.now()
+    const compileShaderSpinner = setInterval(() => {
+        tr.childNodes[1].innerText = SPINNER[(spinner++)%SPINNER.length]
+    }, 250)
+    
+    const HC22000 = 'WPA*02*6baba51340c8a83e2081af3b4bb64da9*00212972a319*002100ab55a9*4d4f4d31*14312696ea57a1c3ea614f7cb68b1455c3009c59a76d349b9a0ffe0d166d6ac2*0103007502010a0000000000000000000f069a5c6e3d9ef06f21e87023d72b4e05a3bac5338ac28495fdb8ce8566957bcb000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001630140100000fac020100000fac040100000fac020800*00'
+    const PASSWORD = 'MOM12345'
+    const handshakeData = parseHashcat22000(HC22000)
+    let pbkdf2Code = (await fetch('pbkdf2_eapol.wgsl').then(r => r.text()))
+        .replaceAll('WORKGROUP_SIZE', WORKGROUP_SIZE)
+        .replaceAll('ESSID_HASHDATA__', u32toWgsl2d(handshakeData.essidBuf))
+        .replaceAll('PTK_HASHDATA__', u32toWgsl2d(handshakeData.ptkBuf))
+        .replaceAll('PTK_HASHDATA_LEN', handshakeData.ptkBuf.length)
+        .replaceAll('EAPOL_HASHDATA__', u32toWgsl2d(handshakeData.eapolData))
+        .replaceAll('EAPOL_HASHDATA_LEN', handshakeData.eapolData.length)
+        .replaceAll('AUTH_MIC__', u32toWgsl(handshakeData.authenticatorMIC))
+    const shaders = [await gpu.buildShader(pbkdf2Code, 'main', WORKGROUP_SIZE)]
+
+    clearInterval(compileShaderSpinner);
+    tr.childNodes[1].innerText = `${(((performance.now() - start) / 1000).toFixed(1))}s`
+    await new Promise(res => setTimeout(res, 100)) // flush text
+    
+    for (let batchSize = 64; batchSize <= MAX_BATCH_SIZE; batchSize *= 2) {
+        let time = Infinity, out;
+        tr.childNodes[2].innerText = batchSize
+        const { buf, buf32 } = numericPasswords(0, batchSize, PASSWORD.length)
+        buf.set(new TextEncoder().encode(PASSWORD + '\n'), buf32[35])
+        for (let x = 0; x < 3; x++) {
+            const start = performance.now()
+            out = await gpu.inferenceTest({ shaders, inp: buf32, count: batchSize })
+            time = Math.min(time, (performance.now() - start) / 1000)
+            maxSpeed = Math.max(maxSpeed, (batchSize / time) | 0)
+            tr.childNodes[3].innerText = `${(maxSpeed / 1000).toFixed(1)} kH/s ${SPINNER[(spinner++)%SPINNER.length]}`
+        }
+        if (out[0] !== 35) {
+            log(`❌ gpu calculation FAILED`)
+            gpu.clean()
+            return
+        }
+
+        if (time > 1) { break }
+    }
+    tr.childNodes[3].innerText = `${(maxSpeed / 1000).toFixed(1)} kH/s`
+    gpu.clean()
+}
+
+</script>
+</html>
