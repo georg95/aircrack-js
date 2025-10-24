@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Aircrack</title>
+  <script src="index.js"></script>
+  <script src="wasm-simd.js"></script>
+  <script src="webgpu.js"></script>
+  <script src="pcap.js"></script>
+</head>
+    <style>
+        html, body {
+            height: 100%;
+            width: 100%;
+            box-sizing: border-box;
+            background-color: #222;
+            font-size: 15px;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            color: bisque;
+        }
+        html {
+            padding: 0;
+        }
+        body {
+            padding: 20px;
+        }
+        textarea, input[type="text"] {
+            background-color: #222;
+            color: bisque;
+            box-sizing: border-box;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        button, select, option {
+            background-color: #222;
+            color: bisque;
+        }
+        pre {
+            text-wrap: auto;
+        }
+        textarea, select, option, input[type="text"] {
+            border: 1px solid bisque;
+            padding: 6px;
+        }
+        select {
+            margin-top: 20px;
+        }
+        #pcap_files {
+            display: none;
+        }
+        #pcap_files_view {
+            display: flex;
+            justify-content: center;
+            padding: 40px 40px;
+            border: 1px dashed bisque;
+            cursor: pointer;
+        }
+    </style>
+<body>
+    <h1>Aircrack</h1>
+    <label id="pcap_files_view" for="pcap_files">
+            Select .cap/.pcap file(s)
+    </label>
+    <input type="file" id="pcap_files" accept=".cap, .pcap" multiple></input>
+    <pre id="output"></pre>
+</body>
+</html>

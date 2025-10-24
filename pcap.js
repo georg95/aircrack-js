@@ -1,5 +1,5 @@
 
-function pcapToHC22000(arrayBuffer) {
+function parsePcap(arrayBuffer) {
   const view = new DataView(arrayBuffer)
   assert(view.byteLength >= 24, '[PCAP] pcap too small')
   const rawMagic = view.getUint32(0, false)
@@ -20,7 +20,7 @@ function pcapToHC22000(arrayBuffer) {
 
   let off = 24
   const eapolFrames = []
-  const bssidToEssid = new Map()
+  const bssidToEssid = {}
   while (off + 16 <= view.byteLength) {
     const tsSec = getU32(off)
     assert_weak(tsSec > 1000000000 && tsSec < 1800000000, `[PCAP] timestamp ${tsSec} is outside 2001-2027 window`)
@@ -31,6 +31,7 @@ function pcapToHC22000(arrayBuffer) {
     let radiotapSize = 0
     if (network === 119) { radiotapSize = getU32(off+4) }
     if (network === 127) { radiotapSize = getU16(off+2) }
+    assert(off+radiotapSize < arrayBuffer.byteLength && radiotapSize <= incl_len, `Invalid radiotap header size: ${radiotapSize.toString(16)}`)
     let pktData = new Uint8Array(arrayBuffer, off+radiotapSize, incl_len-radiotapSize)
 
     const frameControl = pktData[0] | (pktData[1] << 8);
@@ -39,7 +40,7 @@ function pcapToHC22000(arrayBuffer) {
     const hdrLen = calc80211HeaderLength(frameControl, type, subtype)
     const { bssid, sta, essid } = parseAddressesAndEssid(pktData, hdrLen, { type, subtype })
     if (essid) {
-      bssidToEssid.set(bytesToHex(bssid), essid)
+      bssidToEssid[bytesToHex(bssid)] = essid
     }
     const eapolData = parseEapolFrame(pktData, hdrLen)
     if (eapolData) {
@@ -51,7 +52,7 @@ function pcapToHC22000(arrayBuffer) {
   assert_weak(off === view.byteLength, '[PCAP] file is cut in the middle of packet')
   eapolFrames.sort((a, b) => a.ts - b.ts)
 
-  return buildHandshakes({ eapolFrames, bssidToEssid })
+  return { eapolFrames, bssidToEssid }
 }
 
 function calc80211HeaderLength(frameControl, type, subtype) {
@@ -215,7 +216,7 @@ function buildHandshakes({ eapolFrames, bssidToEssid }) {
   }
   const handshakesByEssid = {};
   for (const bssid in APs) {
-    const essid = bssidToEssid.get(bssid)
+    const essid = bssidToEssid[bssid]
     if (!essid) { /* console.warn(`Coud not find SSID for mac ${bssid.toUpperCase()}`); */ continue }
     const framesPack = Object.values(APs[bssid])
     let handshake = framesPack.map(findFullHandshake).find(x => x)
@@ -233,5 +234,5 @@ function buildHandshakes({ eapolFrames, bssidToEssid }) {
 }
 
 if (typeof module === 'object') {
-  module.exports = pcapToHC22000
+  module.exports = { buildHandshakes, parsePcap }
 }
