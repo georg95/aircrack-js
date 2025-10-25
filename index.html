@@ -55,6 +55,16 @@
             border: 1px dashed bisque;
             cursor: pointer;
         }
+        #select_essid {
+          display: none;
+        }
+        #start_btn, #pause_btn, #resume_btn, #stop_btn {
+            width: 100%;
+            height: 40px;
+            margin-top: 20px;
+            display: none;
+            cursor: pointer;
+        }
     </style>
 <body>
     <h1>Aircrack</h1>
@@ -62,6 +72,11 @@
             Select .cap/.pcap file(s)
     </label>
     <input type="file" id="pcap_files" accept=".cap, .pcap" multiple></input>
+    <select id="select_essid"></select>
+    <button id="start_btn">▶️ Start</button>
+    <button id="pause_btn">⏸️ Pause</button>
+    <button id="resume_btn">▶️ Resume</button>
+    <button id="stop_btn">🛑 Stop</button>
     <pre id="output"></pre>
 </body>
 </html>

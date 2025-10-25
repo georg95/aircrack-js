@@ -120,6 +120,34 @@ async function startWasmWorker(wasm, handshakeData, requestWork, onFound, i) {
     let currentChunk = requestWork({})
 }
 
+async function bruteCpu(hc22000line, passwordStream, progress, THREADS=navigator.hardwareConcurrency || 4) {
+    let avgHashrate = 0
+    const update = setInterval(() => progress({ THREADS, avgHashrate }), 200)
+    const password = await new Promise(async resolve => {
+        const handshakeData = parseHashcat22000(hc22000line)
+        const wasm = await fetch('pbkdf2_eapol.wasm').then(r => r.arrayBuffer())
+        let stopped = false
+        function onFound(res) {
+            stopped = true
+            resolve(res.password)
+        }
+        const lastHashrates = Array(THREADS)
+        async function requestWork({ hashrate, id }) {
+            if (stopped) { return }
+            lastHashrates[id] = hashrate;
+            avgHashrate = lastHashrates.reduce((a, b) => a+b, 0)
+            const passwordBatch = passwordStream()
+            if (!passwordBatch) { stopped = true; resolve(null) }
+            return passwordBatch
+        }
+        for (var i = 0; i < THREADS; i++) {
+            startWasmWorker(wasm, handshakeData, requestWork, onFound, i)
+        }
+    })
+    clearInterval(update)
+    return password
+}
+
 function numericPasswords(startFrom, count, characters=8) {    
     let curPassword = new TextEncoder().encode(startFrom.toString(10).padStart(characters, '0') + '\n')
     const passLen = curPassword.length
@@ -143,4 +171,13 @@ function numericPasswords(startFrom, count, characters=8) {
     }
     return { buf: passwordsBuf, buf32: offsets, count }
 }
-
+function numericPasswords8_stream(BATCH_SIZE=500) {
+    var CUR_OFFSET = 0
+    return {
+        next() {
+            if (CUR_OFFSET >= 100_000_000) { return null }
+            return numericPasswords((CUR_OFFSET += BATCH_SIZE) - BATCH_SIZE, BATCH_SIZE, 8)
+        },
+        stop() { CUR_OFFSET = 100_000_000 },
+    }
+}
