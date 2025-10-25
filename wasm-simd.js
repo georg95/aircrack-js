@@ -89,7 +89,7 @@ async function startWasmWorker(wasm, handshakeData, requestWork, onFound, i) {
         const offsets = new Uint32Array(buf.buffer, buf.byteOffset, count)
         for (var i = 0; i < count; i+=2) {
             const pass1 = buf.subarray(offsets[i], buf.indexOf(10, offsets[i]))
-            const pass2 = buf.subarray(offsets[i + 1], buf.indexOf(10, offsets[i + 1]))
+            const pass2 = i+1 >= count ? pass1 : buf.subarray(offsets[i + 1], buf.indexOf(10, offsets[i + 1]))
             const res = pbkdf2_eapol(pass1, pass2)
             if (res !== -1) {
                 self.postMessage({ message: 'found', id: WORKER_NUM, password: new TextDecoder().decode(res === 0 ? pass1 : pass2) })
@@ -136,7 +136,7 @@ async function bruteCpu(hc22000line, passwordStream, progress, THREADS=navigator
             if (stopped) { return }
             lastHashrates[id] = hashrate;
             avgHashrate = lastHashrates.reduce((a, b) => a+b, 0)
-            const passwordBatch = passwordStream()
+            const passwordBatch = await passwordStream()
             if (!passwordBatch) { stopped = true; resolve(null) }
             return passwordBatch
         }
@@ -174,7 +174,7 @@ function numericPasswords(startFrom, count, characters=8) {
 function numericPasswords8_stream(BATCH_SIZE=500) {
     var CUR_OFFSET = 0
     return {
-        next() {
+        async next() {
             if (CUR_OFFSET >= 100_000_000) { return null }
             return numericPasswords((CUR_OFFSET += BATCH_SIZE) - BATCH_SIZE, BATCH_SIZE, 8)
         },
