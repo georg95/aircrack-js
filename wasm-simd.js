@@ -172,10 +172,11 @@ function numericPasswords(startFrom, count, characters=8) {
     }
     return { buf: passwordsBuf, buf32: offsets, count }
 }
-function numericPasswords8_stream(BATCH_SIZE=500) {
+function numericPasswords8_stream() {
     var CUR_OFFSET = 0
     return {
-        async next() {
+        async next(BATCH_SIZE) {
+            assert(BATCH_SIZE, 'specify batch size when stream passwords')
             if (CUR_OFFSET >= 100_000_000) { return null }
             return numericPasswords((CUR_OFFSET += BATCH_SIZE) - BATCH_SIZE, BATCH_SIZE, 8)
         },

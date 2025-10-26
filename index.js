@@ -97,15 +97,26 @@ document.addEventListener('DOMContentLoaded', () => {
       { url: "https://georg95.github.io/SecLists/Passwords/Common-Credentials/Language-Specific/Chinese-common-password-list.txt", filePasswords: 2647330 },
       { url: "https://georg95.github.io/SecLists/Passwords/Common-Credentials/Language-Specific/Spanish_common-usernames-and-passwords.txt", filePasswords: 395990 },
       { url: "https://georg95.github.io/SecLists/Passwords/Common-Credentials/Language-Specific/Dutch_common-pasword-list.txt", filePasswords: 3214818 },
-    ], 500)
+    ])
+    const hc22000line = LOADED_HASHES[window.select_essid.selectedOptions[0].name]
     window.stop_btn.onclick = stop
-    const password = await bruteCpu(
-      LOADED_HASHES[window.select_essid.selectedOptions[0].name],
-      next,
-      ({ THREADS, avgHashrate, file, progress }) =>
-        log(`[CPUx${THREADS}] ${file} ${progress * 100 | 0}% ${(avgHashrate / 1000).toFixed(1)} kH/s ${SPINNER[(spinner++)%SPINNER.length]}`, true)
-    )
-
+    let password = null
+    const MODE = 'gpu'
+    if (MODE === 'gpu') {
+      password = await bruteGPU(
+        hc22000line,
+        next,
+        ({ gpuName, avgHashrate, file, progress }) =>
+          log(`[GPU ${gpuName}] ${SPINNER[(spinner++)%SPINNER.length]} ${(avgHashrate / 1000).toFixed(1)} kH/s\n${file} ${progress * 100 | 0}%`, true)
+      )
+    } else {
+      password = await bruteCpu(
+        hc22000line,
+        () => next(500),
+        ({ THREADS, avgHashrate, file, progress }) =>
+          log(`[CPUx${THREADS}] ${SPINNER[(spinner++)%SPINNER.length]} ${(avgHashrate / 1000).toFixed(1)} kH/s\n${file} ${progress * 100 | 0}%`, true)
+      )
+    }
     window.stop_btn.style.display = 'none'
     window.start_btn.style.display = 'block'
     if (password) {
@@ -116,12 +127,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 })
 
-async function filePasswords_stream(files, batchSize) {
+async function filePasswords_stream(files) {
   let curFile = 0
   let nextBatch = await getPasswords(files[curFile++])
   let currentOperation = Promise.resolve()
   
-  async function next() {
+  async function next(batchSize) {
+    assert(batchSize, 'specify batch size when stream passwords')
     // allow only sequential reading
     currentOperation = currentOperation.then(async () => {
       let passwords = await nextBatch(batchSize)
