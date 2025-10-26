@@ -153,7 +153,7 @@ function log(text, clear=false) {
 function assert(cond, text) {
     if (!cond) {
         const err = new Error(text || 'unknown error')
-        log(`❌ ${text || 'unknown error'}`)
+        window.errlog.innerHTML += `❌ ${text || 'unknown error'}\n`
         err.stack = err.stack.split('\n').filter(x => !x.includes('at assert')).join('\n')
         throw err
     }
@@ -245,6 +245,8 @@ function parseHashcat22000(line) {
         };
     }
     const eapolData = hexToUint8Array(parts[7])
+
+    assert((eapolData[6] & 0x07) !== 0x01, 'md5 not supported')
     assert(eapolData[0] === 0x01 && eapolData[1] === 0x03, 'eapolData should start with 0x0103')
     const ANonce = hexToUint8Array(parts[6])
     const SNonce = eapolData.subarray(17, 49)

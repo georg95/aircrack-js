@@ -33,7 +33,7 @@ async function pbkdf2_eapol_wasm({ authenticatorMIC, essidBuf, ptkBuf, eapolData
     }
 }
 
-async function startWasmWorker(wasm, handshakeData, requestWork, onFound, i) {
+async function startWasmWorker(wasm, handshakeData, requestWork, onEnd, id) {
     const workerCode = `
     async function pbkdf2_eapol_wasm(WASM_CODE, { authenticatorMIC, essidBuf, ptkBuf, eapolData, }) {
         const {instance: { exports: {
@@ -69,10 +69,7 @@ async function startWasmWorker(wasm, handshakeData, requestWork, onFound, i) {
         }
     }
     let pbkdf2_eapol = null
-    const WORKER_NUM = ${i}
-    function log(...args) {
-        console.log('[WORKER '+WORKER_NUM+']', ...args)
-    }
+    const WORKER_NUM = ${id}
     self.onmessage = async function(e) {
         const { message, passwords, wasm, handshakeData } = e.data
         if (message === 'init') {
@@ -104,7 +101,7 @@ async function startWasmWorker(wasm, handshakeData, requestWork, onFound, i) {
 
     async function sendNewWork(data) {
         const passwords = await currentChunk
-        if (!passwords) { return }
+        if (!passwords) { onEnd(null); return }
         worker.postMessage({ message: 'work', passwords })
         currentChunk = requestWork(data)
     }
@@ -113,37 +110,41 @@ async function startWasmWorker(wasm, handshakeData, requestWork, onFound, i) {
             sendNewWork(data);
         }
         if (data.message === 'found') {
-            onFound(data);
+            onEnd(data);
         }
     };
     worker.postMessage({ message: 'init', wasm, handshakeData })
-    let currentChunk = requestWork({})
+    let currentChunk = requestWork({ hashrate: 0, id })
 }
 
 async function bruteCpu(hc22000line, passwordStream, progress, THREADS=navigator.hardwareConcurrency || 4) {
     let avgHashrate = 0
-    const update = setInterval(() => progress({ THREADS, avgHashrate }), 200)
-    const password = await new Promise(async resolve => {
+    let curFile = ''
+    let curProgress = 0
+    const update = setInterval(() => progress({ THREADS, file: curFile, progress: curProgress, avgHashrate }), 200)
+    const password = await new Promise(async (resolve, reject) => { try {
         const handshakeData = parseHashcat22000(hc22000line)
         const wasm = await fetch('pbkdf2_eapol.wasm').then(r => r.arrayBuffer())
-        let stopped = false
-        function onFound(res) {
-            stopped = true
-            resolve(res.password)
+        let running = THREADS
+        let ended = false
+        function onEnd(res) {
+            if (res) { ended = true; resolve(res.password) }
+            if (--running === 0) { ended = true; resolve(null) }
         }
         const lastHashrates = Array(THREADS)
         async function requestWork({ hashrate, id }) {
-            if (stopped) { return }
+            if (ended) { return null }
             lastHashrates[id] = hashrate;
             avgHashrate = lastHashrates.reduce((a, b) => a+b, 0)
-            const passwordBatch = await passwordStream()
-            if (!passwordBatch) { stopped = true; resolve(null) }
-            return passwordBatch
+            const chunk = await passwordStream()
+            curFile = chunk?.name || curFile
+            curProgress = chunk?.progress || curProgress
+            return chunk
         }
         for (var i = 0; i < THREADS; i++) {
-            startWasmWorker(wasm, handshakeData, requestWork, onFound, i)
-        }
-    })
+            startWasmWorker(wasm, handshakeData, requestWork, onEnd, i)
+        }} catch(e) { reject(e) }
+    }).catch(err => console.error(err))
     clearInterval(update)
     return password
 }

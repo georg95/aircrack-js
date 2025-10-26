@@ -42,6 +42,9 @@
         #bench_result th, #bench_result td {
             padding: 10px;
         }
+        #errlog {
+            color: lightcoral;
+        }
     </style>
 <body>
     <button id="benchmark">Start benchmark</button>
@@ -49,6 +52,7 @@
         <thead><th>mode</th><th>compilation</th><th>batch</th><th>speed</th></thead>
     </table>
     <pre id="output"></pre>
+    <pre id="errlog"></pre>
 </body>
 <script>
 window.benchmark.onclick = async () => {

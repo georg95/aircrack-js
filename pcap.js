@@ -198,13 +198,16 @@ function stringToBytes(s) {
   return s.split('').map(x => x.charCodeAt(0).toString(16).padStart(2, '0')).join('')
 }
 
-function assert(cond, text) {
-    if (!cond) {
-        const err = new Error(text || 'unknown error')
-        err.stack = err.stack.split('\n').filter(x => !x.includes('at assert')).join('\n')
-        throw err
-    }
+if (typeof assert === 'undefined') {
+  global.assert = function (cond, text) {
+      if (!cond) {
+          const err = new Error(text || 'unknown error')
+          err.stack = err.stack.split('\n').filter(x => !x.includes('at assert')).join('\n')
+          throw err
+      }
+  }
 }
+
 function assert_weak(cond, text) { if (!cond) { console.warn(text || 'unknown warning') } }
 
 function buildHandshakes({ eapolFrames, bssidToEssid }) {
