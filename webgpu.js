@@ -119,32 +119,34 @@ async function webGPUinit({ BUF_SIZE, WORKGROUP_SIZE=64 }) {
 
 const MAX_BATCH_SIZE = 1024 * 256
 async function bruteGPU(hc22000line, passwordStream, progress) {
-    let curFile = 'compiling...', curProgress = 0, avgHashrate = 0
-    const update = setInterval(() => progress({ gpuName: name, file: curFile, progress: curProgress, avgHashrate }), 200)
-    const { name, compile, inference, clean } = await webGPUinit({ BUF_SIZE: MAX_BATCH_SIZE * 64 })
-    await compile(parseHashcat22000(hc22000line))
+    let curFile = 'compiling...', curProgress = 0, avgHashrate = 0, password = null, gpuName = ''
+    const update = setInterval(() => progress({ gpuName, file: curFile, progress: curProgress, avgHashrate }), 200)
+    try {
+        const { name, compile, inference, clean } = await webGPUinit({ BUF_SIZE: MAX_BATCH_SIZE * 64 })
+        gpuName = name
+        await compile(parseHashcat22000(hc22000line))
 
-    let BATCH_SIZE = 1024 * 128
-    let nextChunk = passwordStream(BATCH_SIZE)
-    let password = null
-    while (true) {
-        const start = performance.now()
-        const chunk = await nextChunk
-        if (!chunk) { break }
-        curFile = chunk.name
-        curProgress = chunk.progress
-        const { buf, buf32, count } = chunk
-        nextChunk = passwordStream(BATCH_SIZE)
-        const out = await inference({ inp: buf32, count })
-        if (out[0] !== 0xffffffff) {
-            const start = buf32[out[0]]
-            const end = buf.indexOf(10, start)
-            password = new TextDecoder().decode(buf.subarray(start, end))
-            break
+        let BATCH_SIZE = 1024 * 128
+        let nextChunk = passwordStream(BATCH_SIZE)
+        while (true) {
+            const start = performance.now()
+            const chunk = await nextChunk
+            if (!chunk) { break }
+            curFile = chunk.name
+            curProgress = chunk.progress
+            const { buf, buf32, count } = chunk
+            nextChunk = passwordStream(BATCH_SIZE)
+            const out = await inference({ inp: buf32, count })
+            if (out[0] !== 0xffffffff) {
+                const start = buf32[out[0]]
+                const end = buf.indexOf(10, start)
+                password = new TextDecoder().decode(buf.subarray(start, end))
+                break
+            }
+            avgHashrate = count / (performance.now() - start) * 1000
         }
-        avgHashrate = count / (performance.now() - start) * 1000
-    }
-    clean()
+        clean()
+    } catch(e) { log(e.message); console.error(e); }
     clearInterval(update)
     return password
 }

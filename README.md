@@ -7,11 +7,11 @@ TODO:
 
 - [x] WASM+SIMD multithread mode
 - [x] WebGPU mode
-- [ ] Device selection
+- [x] Device selection
+- [x] WebGPU settings suggestion
 - [ ] PMKID mode
 - [ ] MD5 legacy auth
 - [ ] Detect network type - select only WPA/WPA2
-- [ ] WebGPU settings suggestion
 - [ ] .hc22000 file support
 - [ ] .pcapng file support
 - [ ] Select password file

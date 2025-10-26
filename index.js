@@ -1,4 +1,5 @@
 let LOADED_HASHES = {}
+let MODE = 'cpu'
 
 document.addEventListener('DOMContentLoaded', () => {
   window.pcap_files.onchange = async (e) => {
@@ -41,6 +42,44 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     window.pcap_files_view.innerText = fileNames.join('\n') + '\n\n' + resText
   }
+
+  async function setDevices() {
+    window.select_device.innerHTML = ''
+    window.select_device.onchange = (e) => {
+      const deviceName = window.select_device.selectedOptions[0].name
+      MODE = deviceName
+      if (deviceName === 'gpu - not available') {
+        log('Your browser not support WebGPU - use Chrome, enable flags:\nchrome://flags#force-high-performance-gpu\nchrome://flags#enable-unsafe-webgpu', true)
+      } else if (deviceName === 'gpu - disabled') {
+        log('In Chrome enable flags and restart:\nchrome://flags#force-high-performance-gpu\nchrome://flags#enable-unsafe-webgpu', true)
+      } else {
+        log('', true)
+      }
+    }
+    const option = document.createElement('option')
+    option.name = 'cpu'
+    option.innerText = `CPU: ${navigator.hardwareConcurrency || 4} threads`
+    window.select_device.appendChild(option)
+    if (navigator.gpu) {
+      MODE = 'gpu'
+      const option = document.createElement('option')
+      option.name = 'gpu'
+      option.selected = true
+      const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' })
+      option.innerText = `GPU: ${adapter.info.description || adapter.info.vendor}`
+      window.select_device.appendChild(option)
+      const optionFail = document.createElement('option')
+      optionFail.name = 'gpu - disabled'
+      optionFail.innerText = `I don't see my GPU`
+      window.select_device.appendChild(optionFail)
+    } else {
+      const option = document.createElement('option')
+      option.name = 'gpu - not available'
+      option.innerText = `GPU (not available)`
+      window.select_device.appendChild(option)
+    }
+  }
+  setDevices()
 
   function setHashes(hashes) {
     LOADED_HASHES = hashes
@@ -101,7 +140,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const hc22000line = LOADED_HASHES[window.select_essid.selectedOptions[0].name]
     window.stop_btn.onclick = stop
     let password = null
-    const MODE = 'gpu'
     if (MODE === 'gpu') {
       password = await bruteGPU(
         hc22000line,
