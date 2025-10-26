@@ -58,7 +58,7 @@
 window.benchmark.onclick = async () => {
     window.benchmark.style.display = 'none'
     await cpu_benchmark()
-    await gpu_benchmark()
+    // await gpu_benchmark()
     log('\n✅ DONE')
     window.benchmark.style.display = ''
 }
@@ -82,46 +82,24 @@ async function cpu_benchmark() {
     const pbkdf2_eapol = await pbkdf2_eapol_wasm(parseHashcat22000(HC22000))
     assert(pbkdf2_eapol(password1, password2) === 1, 'CPU wasm test failed')
 
-    const BATCH_SIZE = 500
+    let BATCH_SIZE = 500, spinner = 0, THREADS = navigator.hardwareConcurrency || 4, hashrate
     const tr = document.getElementById('CPU')
     tr.childNodes[1].innerText = `0s` // TODO measure
-    tr.childNodes[2].innerText = 500
-    let avgHashrate = 0, spinner = 0
-    const update = setInterval(() => {
-        tr.childNodes[3].innerText = `${(avgHashrate / 1000).toFixed(1)} kH/s ${SPINNER[(spinner++)%SPINNER.length]}`
-    }, 200)
-    await new Promise(async resolve => {
-        const HC22000 = 'WPA*02*6baba51340c8a83e2081af3b4bb64da9*00212972a319*002100ab55a9*4d4f4d31*14312696ea57a1c3ea614f7cb68b1455c3009c59a76d349b9a0ffe0d166d6ac2*0103007502010a0000000000000000000f069a5c6e3d9ef06f21e87023d72b4e05a3bac5338ac28495fdb8ce8566957bcb000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001630140100000fac020100000fac040100000fac020800*00'
-        const handshakeData = parseHashcat22000(HC22000)
-        const wasm = await fetch('pbkdf2_eapol.wasm').then(r => r.arrayBuffer())
-        function onEnd(res) {
-            CUR_OFFSET = null
-            resolve(res?.password || null)
-        }
-        var CUR_OFFSET = 0
-        const THREADS = navigator.hardwareConcurrency || 4
-        log(`[CPU] ${navigator.platform} | ${THREADS} threads`)
-        const lastHashrates = Array(THREADS)
-        async function requestWork({ hashrate, id }) {
-            if (CUR_OFFSET === null) {
-                resolve(null)
-                return
-            }
-            lastHashrates[id] = hashrate;
-            avgHashrate = lastHashrates.reduce((a, b) => a+b, 0)
-            // log(`| ${lastHashrates.map(x => x.toFixed(1).padStart(4, ' ')).join(' | ')} | kH/s`, true)
-            const passwords = numericPasswords(CUR_OFFSET, BATCH_SIZE)
-            CUR_OFFSET += BATCH_SIZE
-            if (CUR_OFFSET >= BATCH_SIZE * THREADS * 8) {
-                CUR_OFFSET = null
-            }
-            return passwords
-        }
-        for (var i = 0; i < THREADS; i++) {
-            startWasmWorker(wasm, handshakeData, requestWork, onEnd, i)
-        }
-    })
-    tr.childNodes[3].innerText = `${(avgHashrate / 1000).toFixed(1)} kH/s`
+    tr.childNodes[2].innerText = BATCH_SIZE
+    const hc22000line = 'WPA*02*6baba51340c8a83e2081af3b4bb64da9*00212972a319*002100ab55a9*4d4f4d31*14312696ea57a1c3ea614f7cb68b1455c3009c59a76d349b9a0ffe0d166d6ac2*0103007502010a0000000000000000000f069a5c6e3d9ef06f21e87023d72b4e05a3bac5338ac28495fdb8ce8566957bcb000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001630140100000fac020100000fac040100000fac020800*00'
+    const { next } = await numericPasswords8_stream(0, BATCH_SIZE * THREADS * 8)
+    log(`[CPU] ${navigator.platform} | ${THREADS} threads`)
+
+    await bruteCpu(
+        hc22000line,
+        () => next(BATCH_SIZE),
+        ({ avgHashrate }) => {
+            hashrate = avgHashrate
+            tr.childNodes[3].innerText = `${(hashrate / 1000).toFixed(1)} kH/s ${SPINNER[(spinner++)%SPINNER.length]}`
+        },
+        THREADS
+    )
+    tr.childNodes[3].innerText = `${(hashrate / 1000).toFixed(1)} kH/s`
     clearInterval(update)
 }
 

@@ -134,6 +134,7 @@ async function bruteGPU(hc22000line, passwordStream, progress) {
         curFile = chunk.name
         curProgress = chunk.progress
         const { buf, buf32, count } = chunk
+        nextChunk = passwordStream(BATCH_SIZE)
         const out = await inference({ inp: buf32, count })
         if (out[0] !== 0xffffffff) {
             const start = buf32[out[0]]
@@ -142,7 +143,6 @@ async function bruteGPU(hc22000line, passwordStream, progress) {
             break
         }
         avgHashrate = count / (performance.now() - start) * 1000
-        nextChunk = passwordStream(BATCH_SIZE)
     }
     clean()
     clearInterval(update)
