@@ -58,7 +58,7 @@
 window.benchmark.onclick = async () => {
     window.benchmark.style.display = 'none'
     await cpu_benchmark()
-    // await gpu_benchmark()
+    await gpu_benchmark()
     log('\n✅ DONE')
     window.benchmark.style.display = ''
 }
@@ -100,7 +100,6 @@ async function cpu_benchmark() {
         THREADS
     )
     tr.childNodes[3].innerText = `${(hashrate / 1000).toFixed(1)} kH/s`
-    clearInterval(update)
 }
 
 const SPINNER = ['|', '/', '-', '\\']
