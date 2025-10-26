@@ -1,7 +1,7 @@
 # Aircrack web
 
-## [App](https://georg95.github.io/aircrack-web/benchmark.html)
-## [Benchmark](https://georg95.github.io/aircrack-web/index.html)
+## [App](https://georg95.github.io/aircrack-web/index.html)
+## [Benchmark](https://georg95.github.io/aircrack-web/benchmark.html)
 
 TODO:
 
