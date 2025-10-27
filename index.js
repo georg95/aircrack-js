@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let allPMKIDframes = []
     let allBssidToEssid = {}
     let fileNames = []
-    await Promise.all(Array.from(e.target.files).map(async f => {
+    await Promise.all(Array.from(e.target.files).filter(f => f.name.endsWith('.cap') || f.name.endsWith('.pcap')).map(async f => {
       const { error, eapolFrames, pmkidFrames, bssidToEssid } = await parsePcapFile(f)
       if (error) {
         fileNames.push(`${f.name}: ${error}`)
@@ -36,7 +36,29 @@ document.addEventListener('DOMContentLoaded', () => {
     }))
     const handshakes = buildHandshakes({ eapolFrames: allEAPOLframes, bssidToEssid: allBssidToEssid })
     const pmkids = buildPMKID({ pmkidFrames: allPMKIDframes, bssidToEssid: allBssidToEssid })
-    setHashes({ ...handshakes, ...pmkids })
+    const hc22000Hashes = {}
+    await Promise.all(Array.from(e.target.files).filter(f => f.name.endsWith('.hc22000')).map(async file => {
+      return new Promise(resolve => {
+        var reader = new FileReader()
+        reader.onload = function() {
+          const text = new TextDecoder().decode(this.result)
+          const hc22000Lines = text.split('\n').filter(x => x)
+          for (let hc22000line of hc22000Lines) {
+            const essid = hexToString(hc22000line.split('*')[5])
+            if (!essid) {
+              fileNames.push(`${file.name}: Invalid hc22000 format`)
+              resolve()
+              return
+            }
+            hc22000Hashes[essid] = hc22000line
+          }
+          fileNames.push(file.name)
+          resolve()
+        }
+        reader.readAsArrayBuffer(file);
+      })
+    }))
+    setHashes({ ...handshakes, ...pmkids, ...hc22000Hashes })
     let resText = Object.keys(LOADED_HASHES).map(essid => {
       if (LOADED_HASHES[essid].split('*')[1] === '01') {
         return `* ${essid}: [PMKID]`

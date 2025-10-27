@@ -11,7 +11,7 @@ TODO:
 - [x] WebGPU settings suggestion
 - [x] PMKID mode
 - [x] Detect network type - select only WPA/WPA2
-- [ ] .hc22000 file support
+- [x] .hc22000 file support
 - [ ] .pcapng file support
 - [ ] Select password file
 - [ ] Auto batch size adjustment
