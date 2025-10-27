@@ -123,6 +123,8 @@ function parseEapolFrame(buf, payloadOffset) {
   const length = view.getUint16(eapolOffset + 2, false); // big endian
   if (type !== 3) return console.warn("Not EAPOL-Key");
   const keyDescType = buf[eapolOffset + 4];
+  const keyVersion = buf[eapolOffset + 6] & 0x07
+  if (keyVersion !== 2) { console.warn(`EAPOL keyVersion ${keyVersion} not supported`); return null }
   const keyInfo = view.getUint16(eapolOffset + 5, false); // big endian
   const keyLen = view.getUint16(eapolOffset + 7, false);
   const replayCounter = view.getBigUint64(eapolOffset + 9, false);
@@ -138,7 +140,7 @@ function parseEapolFrame(buf, payloadOffset) {
   else if (micBit && !ackBit && !installBit && !secureBit && keyDataLen !== 0) msgNum = 2;
   else if (micBit && ackBit && installBit) msgNum = 3;
   else if (micBit && !ackBit && !installBit && keyDataLen === 0) msgNum = 4;
-  return { msgNum, keyInfo, keyDescType, keyLen, replayCounter, nonce, mic, eapolOffset, eapolData: buf.subarray(eapolOffset, eapolOffset + length + 4) }
+  return { msgNum, keyVersion, keyInfo, keyDescType, keyLen, replayCounter, nonce, mic, eapolOffset, eapolData: buf.subarray(eapolOffset, eapolOffset + length + 4) }
 }
 
 function parseAddressesAndEssid(buf, hdrLen, { type, subtype }) {

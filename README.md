@@ -9,12 +9,12 @@ TODO:
 - [x] WebGPU mode
 - [x] Device selection
 - [x] WebGPU settings suggestion
-- [ ] PMKID mode
-- [ ] MD5 legacy auth
-- [ ] Detect network type - select only WPA/WPA2
+- [x] PMKID mode
+- [x] Detect network type - select only WPA/WPA2
 - [ ] .hc22000 file support
 - [ ] .pcapng file support
 - [ ] Select password file
 - [ ] Auto batch size adjustment
+- [ ] MD5 legacy auth
 - [ ] WEP crack mode
 - [ ] Autovectorization to AVX2/AVX512

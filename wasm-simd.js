@@ -349,7 +349,7 @@ function parseHashcat22000(line) {
     }
     const eapolData = hexToUint8Array(parts[7])
 
-    assert((eapolData[6] & 0x07) !== 0x01, 'md5 not supported')
+    assert((eapolData[6] & 0x07) === 0x02, 'only WPA/WPA2 keys supported with keyType=2')
     assert(eapolData[0] === 0x01 && eapolData[1] === 0x03, 'eapolData should start with 0x0103')
     const ANonce = hexToUint8Array(parts[6])
     const SNonce = eapolData.subarray(17, 49)
