@@ -33,6 +33,32 @@ async function pbkdf2_eapol_wasm({ authenticatorMIC, essidBuf, ptkBuf, eapolData
     }
 }
 
+async function pbkdf2_pmkid_wasm({ pmkid, essidBuf, pmkNameBuf }) {
+    const SHA1_WASM = await fetch('pbkdf2_eapol.wasm').then(r => r.arrayBuffer())
+    const {instance: { exports: {
+        SSID_BUF1: { value: SSID_BUF1 },
+        SSID_BUF2: { value: SSID_BUF2 },
+        PMK_NAME_BUF: { value: PMK_NAME_BUF },
+        EXPECTED_PMKID: { value: EXPECTED_PMKID },
+        password1: { value: password1 },
+        password2: { value: password2 },
+        pbkdf2_pmkid, memory: {buffer} } }} =
+    await WebAssembly.instantiate(SHA1_WASM)
+    new Uint32Array(buffer, SSID_BUF1, 16).set(essidBuf[0])
+    new Uint32Array(buffer, SSID_BUF2, 16).set(essidBuf[1])
+    new Uint32Array(buffer, PMK_NAME_BUF, 16).set(pmkNameBuf)
+    new Uint32Array(buffer, EXPECTED_PMKID, 4).set(pmkid)
+
+    const password1b = new Uint8Array(buffer, password1, 64);
+    const password2b = new Uint8Array(buffer, password2, 64);
+
+    return function hash(pass1, pass2) {
+        password1b.set(pass1)
+        password2b.set(pass2)
+        return pbkdf2_pmkid(pass1.length, pass2.length)
+    }
+}
+
 async function startWasmWorker(wasm, handshakeData, requestWork, onEnd, id) {
     const workerCode = `
     async function pbkdf2_eapol_wasm(WASM_CODE, { authenticatorMIC, essidBuf, ptkBuf, eapolData, }) {
@@ -68,13 +94,44 @@ async function startWasmWorker(wasm, handshakeData, requestWork, onEnd, id) {
             return pbkdf1_eapol(pass1.length, pass2.length)
         }
     }
-    let pbkdf2_eapol = null
+    async function pbkdf2_pmkid_wasm(WASM_CODE, { pmkid, essidBuf, pmkNameBuf }) {
+        const {instance: { exports: {
+            SSID_BUF1: { value: SSID_BUF1 },
+            SSID_BUF2: { value: SSID_BUF2 },
+            PMK_NAME_BUF: { value: PMK_NAME_BUF },
+            EXPECTED_PMKID: { value: EXPECTED_PMKID },
+            password1: { value: password1 },
+            password2: { value: password2 },
+            pbkdf2_pmkid, memory: {buffer} } }} =
+        await WebAssembly.instantiate(WASM_CODE)
+        new Uint32Array(buffer, SSID_BUF1, 16).set(essidBuf[0])
+        new Uint32Array(buffer, SSID_BUF2, 16).set(essidBuf[1])
+        new Uint32Array(buffer, PMK_NAME_BUF, 16).set(pmkNameBuf)
+        new Uint32Array(buffer, EXPECTED_PMKID, 4).set(pmkid)
+
+        const password1b = new Uint8Array(buffer, password1, 64);
+        const password2b = new Uint8Array(buffer, password2, 64);
+
+        return function hash(pass1, pass2) {
+            password1b.set(pass1)
+            password2b.set(pass2)
+            return pbkdf2_pmkid(pass1.length, pass2.length)
+        }
+    }
+    let check_passwords = null
     const WORKER_NUM = ${id}
     self.onmessage = async function(e) {
         const { message, passwords, wasm, handshakeData } = e.data
         if (message === 'init') {
-            pbkdf2_eapol = await pbkdf2_eapol_wasm(wasm, handshakeData)
-            self.postMessage({ message: 'work', id: WORKER_NUM, hashrate: 0 })
+            if (handshakeData.version === 1) {
+                check_passwords = await pbkdf2_pmkid_wasm(wasm, handshakeData)
+                self.postMessage({ message: 'work', id: WORKER_NUM, hashrate: 0 })
+            } else if (handshakeData.version === 2) {
+                check_passwords = await pbkdf2_eapol_wasm(wasm, handshakeData)
+                self.postMessage({ message: 'work', id: WORKER_NUM, hashrate: 0 })
+            } else {
+                console.error('unsupported handshakeData version', handshakeData.version)
+            }
         }
         if (message === 'work') {
             brute(passwords)
@@ -87,7 +144,7 @@ async function startWasmWorker(wasm, handshakeData, requestWork, onEnd, id) {
         for (var i = 0; i < count; i+=2) {
             const pass1 = buf.subarray(offsets[i], buf.indexOf(10, offsets[i]))
             const pass2 = i+1 >= count ? pass1 : buf.subarray(offsets[i + 1], buf.indexOf(10, offsets[i + 1]))
-            const res = pbkdf2_eapol(pass1, pass2)
+            const res = check_passwords(pass1, pass2)
             if (res !== -1) {
                 self.postMessage({ message: 'found', id: WORKER_NUM, password: new TextDecoder().decode(res === 0 ? pass1 : pass2) })
                 return
@@ -263,19 +320,31 @@ function hexToUint8Array(hexString) {
     }
     return new Uint8Array(bytes);
 }
+function hexToUint32Array(hexString) {
+    const u32 = [];
+    for (let i = 0; i < hexString.length; i += 8) {
+        u32.push(parseInt(hexString.substr(i, 8), 16));
+    }
+    return new Uint32Array(u32);
+}
 
 function arrayCmp(a, b) { for (let i = 0; i < a.length && i < b.length; i++) { if (a[i] < b[i]) return -1; if (a[i] > b[i]) return 1; } return 0; }
 
 function parseHashcat22000(line) {
     const parts = line.split('*')
     assert(parts.length >= 8 && parts[0] === 'WPA' && (parts[1] === '02' || parts[1] === '01'), 'Invalid hashcat 22000 format')
+    
+    const ssid = hexToString(parts[5])
     if (parts[1] === '01') {
         return {
             version: 1,
-            pmkid: hexToUint8Array(parts[2]),
-            APmac: hexToUint8Array(parts[3]),
-            Clientmac: hexToUint8Array(parts[4]),
-            ssid: hexToString(parts[5]),
+            pmkid: hexToUint32Array(parts[2]),
+            pmkNameBuf: hmacSha1blocks(new Uint8Array([
+                ...new TextEncoder().encode("PMK Name"),
+                ...hexToUint8Array(parts[3]),
+                ...hexToUint8Array(parts[4])
+            ]))[0],
+            essidBuf: [initSaltBuffer(ssid, 1), initSaltBuffer(ssid, 2)],
         };
     }
     const eapolData = hexToUint8Array(parts[7])
@@ -297,7 +366,6 @@ function parseHashcat22000(line) {
     const authMic = hexToUint8Array(parts[2])
     bufUint32LESwap(authMic)
     const authenticatorMIC = new Uint32Array(authMic.buffer, authMic.byteOffset, authMic.byteLength / 4)
-    const ssid = hexToString(parts[5])
     return {
         version: 2,
         authenticatorMIC,

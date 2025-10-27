@@ -19,21 +19,28 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.readAsArrayBuffer(file);
       })
     }
-    let totalFrames = []
-    let totalBssidToEssid = {}
+    let allEAPOLframes = []
+    let allPMKIDframes = []
+    let allBssidToEssid = {}
     let fileNames = []
     await Promise.all(Array.from(e.target.files).map(async f => {
-      const { error, eapolFrames, bssidToEssid } = await parsePcapFile(f)
+      const { error, eapolFrames, pmkidFrames, bssidToEssid } = await parsePcapFile(f)
       if (error) {
         fileNames.push(`${f.name}: ${error}`)
       } else {
         fileNames.push(f.name)
-        totalBssidToEssid = { ...totalBssidToEssid, ...bssidToEssid }
-        totalFrames = totalFrames.concat(eapolFrames)
+        allBssidToEssid = { ...allBssidToEssid, ...bssidToEssid }
+        allEAPOLframes = allEAPOLframes.concat(eapolFrames)
+        allPMKIDframes = allPMKIDframes.concat(pmkidFrames)
       }
     }))
-    setHashes(buildHandshakes({ eapolFrames: totalFrames, bssidToEssid: totalBssidToEssid }))
+    const handshakes = buildHandshakes({ eapolFrames: allEAPOLframes, bssidToEssid: allBssidToEssid })
+    const pmkids = buildPMKID({ pmkidFrames: allPMKIDframes, bssidToEssid: allBssidToEssid })
+    setHashes({ ...handshakes, ...pmkids })
     let resText = Object.keys(LOADED_HASHES).map(essid => {
+      if (LOADED_HASHES[essid].split('*')[1] === '01') {
+        return `* ${essid}: [PMKID]`
+      }
       const eapolType = parseInt(LOADED_HASHES[essid].split('*')[8], 16) & 0x7
       return `* ${essid}: [EAPOL 0x${LOADED_HASHES[essid].split('*')[8]} - ${eapolType === 5 ? 'full' : 'partial'}]`
     }).join('\n')

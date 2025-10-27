@@ -78,9 +78,12 @@ async function cpu_benchmark() {
     const enc = new TextEncoder();
     const password1 = enc.encode('MOM12344')
     const password2 = enc.encode('MOM12345')
-    const HC22000 = 'WPA*02*6baba51340c8a83e2081af3b4bb64da9*00212972a319*002100ab55a9*4d4f4d31*14312696ea57a1c3ea614f7cb68b1455c3009c59a76d349b9a0ffe0d166d6ac2*0103007502010a0000000000000000000f069a5c6e3d9ef06f21e87023d72b4e05a3bac5338ac28495fdb8ce8566957bcb000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001630140100000fac020100000fac040100000fac020800*00'
-    const pbkdf2_eapol = await pbkdf2_eapol_wasm(parseHashcat22000(HC22000))
-    assert(pbkdf2_eapol(password1, password2) === 1, 'CPU wasm test failed')
+    const HC22000_EAPOL = 'WPA*02*6baba51340c8a83e2081af3b4bb64da9*00212972a319*002100ab55a9*4d4f4d31*14312696ea57a1c3ea614f7cb68b1455c3009c59a76d349b9a0ffe0d166d6ac2*0103007502010a0000000000000000000f069a5c6e3d9ef06f21e87023d72b4e05a3bac5338ac28495fdb8ce8566957bcb000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001630140100000fac020100000fac040100000fac020800*00'
+    const HC22000_PMKID = 'WPA*01*18050615d464b8a38d329c99f9eb4bb4*00212972a319*002100ab55a9*4d4f4d31***'
+    const pbkdf2_eapol = await pbkdf2_eapol_wasm(parseHashcat22000(HC22000_EAPOL))
+    const pbkdf2_pmkid = await pbkdf2_pmkid_wasm(parseHashcat22000(HC22000_PMKID))
+    assert(pbkdf2_eapol(password1, password2) === 1, 'CPU wasm/eapol test failed')
+    assert(pbkdf2_pmkid(password1, password2) === 1, 'CPU wasm/pmkid test failed')
 
     let BATCH_SIZE = 500, spinner = 0, THREADS = navigator.hardwareConcurrency || 4, hashrate
     const tr = document.getElementById('CPU')
