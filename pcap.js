@@ -20,6 +20,7 @@ function parsePcap(arrayBuffer) {
 
   let off = 24
   const eapolFrames = []
+  const pmkidFrames = []
   const bssidToEssid = {}
   while (off + 16 <= view.byteLength) {
     const tsSec = getU32(off)
@@ -44,6 +45,10 @@ function parsePcap(arrayBuffer) {
     }
     const eapolData = parseEapolFrame(pktData, hdrLen)
     if (eapolData) {
+      const pmkid = extractPMKID(pktData, eapolData.eapolOffset)
+      if (pmkid) {
+        pmkidFrames.push({ pmkid, ts: tsSec, bssid: bytesToHex(bssid), sta: bytesToHex(sta), essid })
+      }
       eapolFrames.push({...eapolData, ts: tsSec, bssid: bytesToHex(bssid), sta: bytesToHex(sta), essid })
     }
     
@@ -52,7 +57,46 @@ function parsePcap(arrayBuffer) {
   assert_weak(off === view.byteLength, '[PCAP] file is cut in the middle of packet')
   eapolFrames.sort((a, b) => a.ts - b.ts)
 
-  return { eapolFrames, bssidToEssid }
+  return { eapolFrames, pmkidFrames, bssidToEssid }
+}
+
+const ELEMID_VENDOR = 0xDD
+const RSN_OUI = [0x00, 0x0f, 0xac]
+function extractPMKID(buf, eapolOffset) {
+  if (eapolOffset + 99 >= buf.length) return null;
+  const keyInfo = buf[eapolOffset + 6];
+  const keyDescriptorVersion = keyInfo & 7;
+  if (((keyInfo & 0x08) === 0) || ((keyInfo & 0x40) !== 0) || ((keyInfo & 0x80) === 0)) {
+    return null;
+  }
+  if ((buf[eapolOffset + 5] & 0x01) !== 0) return null;
+  let p = eapolOffset + 99;
+  while (p + 2 <= buf.length) {
+    const el_id = buf[p];
+    const el_len = buf[p + 1];
+    if (p + 2 + el_len > buf.length) break;
+    if (el_id === ELEMID_VENDOR) {
+      let pos = p + 2;
+      if (el_len >= 3 + 1 + 16) {
+        if (buf[pos] === RSN_OUI[0] && buf[pos + 1] === RSN_OUI[1] && buf[pos + 2] === RSN_OUI[2]) {
+          pos += 3;
+          pos += 1;
+          if (pos + 16 <= p + 2 + el_len) {
+            const pmkid = buf.slice(pos, pos + 16);
+            let allZero = true;
+            for (let i = 0; i < 16; i++) {
+              if (pmkid[i] !== 0) { allZero = false; break; }
+            }
+            if (!allZero && keyDescriptorVersion > 0) {
+              return pmkid
+            }
+          }
+        }
+      }
+    }
+    p += 2 + el_len;
+  }
+  return null;
 }
 
 function calc80211HeaderLength(frameControl, type, subtype) {
@@ -94,7 +138,7 @@ function parseEapolFrame(buf, payloadOffset) {
   else if (micBit && !ackBit && !installBit && !secureBit && keyDataLen !== 0) msgNum = 2;
   else if (micBit && ackBit && installBit) msgNum = 3;
   else if (micBit && !ackBit && !installBit && keyDataLen === 0) msgNum = 4;
-  return { msgNum, keyInfo, keyDescType, keyLen, replayCounter, nonce, mic, eapolData: buf.subarray(eapolOffset, eapolOffset + length + 4) }
+  return { msgNum, keyInfo, keyDescType, keyLen, replayCounter, nonce, mic, eapolOffset, eapolData: buf.subarray(eapolOffset, eapolOffset + length + 4) }
 }
 
 function parseAddressesAndEssid(buf, hdrLen, { type, subtype }) {
@@ -220,7 +264,7 @@ function buildHandshakes({ eapolFrames, bssidToEssid }) {
   const handshakesByEssid = {};
   for (const bssid in APs) {
     const essid = bssidToEssid[bssid]
-    if (!essid) { /* console.warn(`Coud not find SSID for mac ${bssid.toUpperCase()}`); */ continue }
+    if (!essid) { console.warn(`Coud not find SSID for mac ${bssid.toUpperCase()}`); continue }
     const framesPack = Object.values(APs[bssid])
     let handshake = framesPack.map(findFullHandshake).find(x => x)
        || framesPack.map(findPartialHandshakeM2M3).find(x => x)
@@ -236,6 +280,16 @@ function buildHandshakes({ eapolFrames, bssidToEssid }) {
   return handshakesByEssid
 }
 
+function buildPMKID({ pmkidFrames, bssidToEssid }) {
+  let pmkids = {}
+  for (let { pmkid, essid, bssid, sta } of pmkidFrames) {
+    essid = essid || bssidToEssid[bssid]
+    if (!essid) { console.warn(`Coud not find SSID for mac ${bssid.toUpperCase()}`); continue }
+    pmkids[essid] = ['WPA', '01', bytesToHex(pmkid), bssid, sta, stringToBytes(essid), '', '', ''].join('*')
+  }
+  return pmkids
+}
+
 if (typeof module === 'object') {
-  module.exports = { buildHandshakes, parsePcap }
+  module.exports = { buildHandshakes, buildPMKID, parsePcap }
 }
