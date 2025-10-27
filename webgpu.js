@@ -81,14 +81,17 @@ async function webGPUinit({ BUF_SIZE, WORKGROUP_SIZE=64 }) {
     })
     let shader = null
     async function compile(handshakeData) {
+        assert(handshakeData.version === 1 || handshakeData.version === 2, `unsupported handshakeData version: ${handshakeData.version}`)
         let pbkdf2Code = (await fetch('pbkdf2_eapol.wgsl').then(r => r.text()))
             .replaceAll('WORKGROUP_SIZE', WORKGROUP_SIZE)
             .replaceAll('ESSID_HASHDATA__', u32toWgsl2d(handshakeData.essidBuf))
-            .replaceAll('PTK_HASHDATA__', u32toWgsl2d(handshakeData.ptkBuf))
-            .replaceAll('PTK_HASHDATA_LEN', handshakeData.ptkBuf.length)
-            .replaceAll('EAPOL_HASHDATA__', u32toWgsl2d(handshakeData.eapolData))
-            .replaceAll('EAPOL_HASHDATA_LEN', handshakeData.eapolData.length)
-            .replaceAll('AUTH_MIC__', u32toWgsl(handshakeData.authenticatorMIC))
+            .replaceAll('PMK_NAME_BUF__', u32toWgsl(handshakeData.pmkNameBuf || Array(16).fill(0)))
+            .replaceAll('EXPECTED_PMKID__', u32toWgsl(handshakeData.pmkid || Array(4).fill(0)))
+            .replaceAll('PTK_HASHDATA__', u32toWgsl2d(handshakeData.ptkBuf || [Array(16).fill(0)]))
+            .replaceAll('PTK_HASHDATA_LEN', handshakeData.ptkBuf?.length || 1)
+            .replaceAll('EAPOL_HASHDATA__', u32toWgsl2d(handshakeData.eapolData || [Array(16).fill(0)]))
+            .replaceAll('EAPOL_HASHDATA_LEN', handshakeData.eapolData?.length || 1)
+            .replaceAll('AUTH_MIC__', u32toWgsl(handshakeData.authenticatorMIC || Array(4).fill(0)))
 
         const module = device.createShaderModule({ code: pbkdf2Code })
         const shaderInfo = await module.getCompilationInfo()
@@ -101,7 +104,7 @@ async function webGPUinit({ BUF_SIZE, WORKGROUP_SIZE=64 }) {
                 layout: device.createPipelineLayout({
                     bindGroupLayouts: [bindGroupLayout],
                 }),
-                compute: { module, entryPoint: 'main' },
+                compute: { module, entryPoint: handshakeData.version === 1 ? 'pmkid' : 'eapol' },
             });
         } catch (e) {
             console.error(e)

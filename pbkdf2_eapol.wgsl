@@ -2,6 +2,8 @@ const PTK_HASHDATA = PTK_HASHDATA__;
 const EAPOL_HASHDATA = EAPOL_HASHDATA__;
 const AUTH_MIC = AUTH_MIC__;
 const ESSID_HASHDATA = ESSID_HASHDATA__;
+const EXPECTED_PMKID = EXPECTED_PMKID__;
+const PMK_NAME_BUF = PMK_NAME_BUF__;
 
 fn sha1_round(w: ptr<function, array<u32, 16>>, IV: array<u32, 5>) -> array<u32, 5> {
   var a = IV[0];
@@ -153,6 +155,19 @@ fn calcMic(ptk: array<u32, 5>) -> array<u32, 5> {
   return sha1_round(&tmp_array, seed2);
 }
 
+fn calcPmkid(dk1: array<u32, 5>, dk2: array<u32, 5>) -> array<u32, 5> {
+  var tmp_array: array<u32, 16>;
+  for (var i = 0; i < 16; i++) { tmp_array[i] = 0; }
+  for (var i = 0; i < 5; i++) { tmp_array[i] = dk1[i]; }
+  for (var i = 0; i < 3; i++) { tmp_array[i + 5] = dk2[i]; }
+  var state = hmac_seed(&tmp_array, 0x36363636);
+  var seed2 = hmac_seed(&tmp_array, 0x5c5c5c5c);
+  tmp_array = PMK_NAME_BUF;
+  state = sha1_round(&tmp_array, state);
+  set_main_buf(&tmp_array, &state);
+  return sha1_round(&tmp_array, seed2);
+}
+
 const masks = array<u32, 4>(0x00ffffff, 0xff00ffff, 0xffff00ff, 0xffffff00);
 fn setByteArr(buf: ptr<function, array<u32, 16>>, idx: u32, byte: u32) {
   let i = idx/4;
@@ -176,7 +191,7 @@ fn initPasswordBuffer(passOffset: u32) -> array<u32, 16> {
 @group(0) @binding(1) var<storage, read_write> output: array<u32>;
 
 @compute @workgroup_size(WORKGROUP_SIZE)
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+fn eapol(@builtin(global_invocation_id) gid: vec3<u32>) {
   if (gid.x == 0) { output[0] = 0xffffffff; }
   var password = initPasswordBuffer(input[gid.x]);
   var seed1 = hmac_seed(&password, 0x36363636);
@@ -191,3 +206,20 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     output[0] = gid.x;
   }
 }
+
+@compute @workgroup_size(WORKGROUP_SIZE)
+fn pmkid(@builtin(global_invocation_id) gid: vec3<u32>) {
+  if (gid.x == 0) { output[0] = 0xffffffff; }
+  var password = initPasswordBuffer(input[gid.x]);
+  var seed1 = hmac_seed(&password, 0x36363636);
+  var seed2 = hmac_seed(&password, 0x5c5c5c5c);
+  var dk1 = pbkdf2_block(seed1, seed2, ESSID_HASHDATA[0]);
+  var dk2 = pbkdf2_block(seed1, seed2, ESSID_HASHDATA[1]);
+  var pmkid = calcPmkid(dk1, dk2);
+  var found = true;
+  for (var i = 0; i < 4; i++) { if (EXPECTED_PMKID[i] != pmkid[i]) { found = false; } }
+  if (found) {
+    output[0] = gid.x;
+  }
+}
+
