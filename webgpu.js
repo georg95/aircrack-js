@@ -123,13 +123,15 @@ async function webGPUinit({ BUF_SIZE, WORKGROUP_SIZE=64 }) {
 const MAX_BATCH_SIZE = 1024 * 256
 async function bruteGPU(hc22000line, passwordStream, progress) {
     let curFile = 'compiling...', curProgress = 0, avgHashrate = 0, password = null, gpuName = ''
-    const update = setInterval(() => progress({ gpuName, file: curFile, progress: curProgress, avgHashrate }), 200)
+    let prevBatchSizeHashrate = 0
+    let curBatchHashrates = []
+    let BATCH_SIZE = 1024
+    const update = setInterval(() => progress({ gpuName, BATCH_SIZE, file: curFile, progress: curProgress, avgHashrate }), 200)
     try {
         const { name, compile, inference, clean } = await webGPUinit({ BUF_SIZE: MAX_BATCH_SIZE * 64 })
         gpuName = name
         await compile(parseHashcat22000(hc22000line))
-
-        let BATCH_SIZE = 1024 * 128
+        
         let nextChunk = passwordStream(BATCH_SIZE)
         while (true) {
             const start = performance.now()
@@ -146,7 +148,17 @@ async function bruteGPU(hc22000line, passwordStream, progress) {
                 password = new TextDecoder().decode(buf.subarray(start, end))
                 break
             }
-            avgHashrate = count / (performance.now() - start) * 1000
+            if (count === BATCH_SIZE) {
+                curBatchHashrates.push(count / (performance.now() - start) * 1000)
+                if (curBatchHashrates.length > 3) { curBatchHashrates.shift() }
+                avgHashrate = curBatchHashrates.reduce((a, b) => a + b, 0) / curBatchHashrates.length | 0
+                const avgShaderTime = BATCH_SIZE / avgHashrate
+                if (curBatchHashrates.length === 3 && avgHashrate > prevBatchSizeHashrate * 1.05 && avgShaderTime < 0.5) {
+                    BATCH_SIZE *= 2
+                    prevBatchSizeHashrate = avgHashrate
+                    curBatchHashrates = []
+                }
+            }
         }
         clean()
     } catch(e) { log(e.message); console.error(e); }

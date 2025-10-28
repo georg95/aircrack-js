@@ -13,8 +13,8 @@ TODO:
 - [x] Detect network type - select only WPA/WPA2
 - [x] .hc22000 file support
 - [x] .pcapng file support
+- [x] Auto batch size adjustment
 - [ ] Select password file
-- [ ] Auto batch size adjustment
 - [ ] MD5 legacy auth
 - [ ] WEP crack mode
 - [ ] Autovectorization to AVX2/AVX512

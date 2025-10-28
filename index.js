@@ -173,8 +173,8 @@ document.addEventListener('DOMContentLoaded', () => {
       password = await bruteGPU(
         hc22000line,
         next,
-        ({ gpuName, avgHashrate, file, progress }) =>
-          log(`[GPU ${gpuName}] ${SPINNER[(spinner++)%SPINNER.length]} ${(avgHashrate / 1000).toFixed(1)} kH/s\n${file} ${progress * 100 | 0}%`, true)
+        ({ gpuName, BATCH_SIZE, avgHashrate, file, progress }) =>
+          log(`[GPU ${gpuName} x ${BATCH_SIZE}] ${SPINNER[(spinner++)%SPINNER.length]} ${(avgHashrate / 1000).toFixed(1)} kH/s\n${file} ${progress * 100 | 0}%`, true)
       )
     } else {
       password = await bruteCpu(
