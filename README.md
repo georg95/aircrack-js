@@ -12,7 +12,7 @@ TODO:
 - [x] PMKID mode
 - [x] Detect network type - select only WPA/WPA2
 - [x] .hc22000 file support
-- [ ] .pcapng file support
+- [x] .pcapng file support
 - [ ] Select password file
 - [ ] Auto batch size adjustment
 - [ ] MD5 legacy auth

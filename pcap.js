@@ -3,6 +3,9 @@ function parsePcap(arrayBuffer) {
   const view = new DataView(arrayBuffer)
   assert(view.byteLength >= 24, '[PCAP] pcap too small')
   const rawMagic = view.getUint32(0, false)
+  if (rawMagic === 0x0a0d0d0a) {
+    return parsePcapng(arrayBuffer, view)
+  }
   assert(rawMagic !== 0x0a0d0d0a, '[PCAP] pcapng detected — this parser expects classic pcap')
   let le = null
   if (rawMagic === 0xa1b2c3d4) le = false
@@ -23,40 +26,82 @@ function parsePcap(arrayBuffer) {
   const pmkidFrames = []
   const bssidToEssid = {}
   while (off + 16 <= view.byteLength) {
-    const tsSec = getU32(off)
-    assert_weak(tsSec > 1000000000 && tsSec < 1800000000, `[PCAP] timestamp ${tsSec} is outside 2001-2027 window`)
+    const ts = getU32(off)
+    assert_weak(ts > 1000000000 && ts < 1800000000, `[PCAP] timestamp ${ts} is outside 2001-2027 window`)
     const incl_len = getU32(off + 8)
-    // console.log(`Frame ${packets.length + 1}: ${orig_len} bytes on wire (${orig_len*8} bits), ${incl_len} bytes captured (${incl_len*8} bits)`)
     off += 16
     if (off + incl_len > view.byteLength) break
-    let radiotapSize = 0
-    if (network === 119) { radiotapSize = getU32(off+4) }
-    if (network === 127) { radiotapSize = getU16(off+2) }
-    assert(off+radiotapSize < arrayBuffer.byteLength && radiotapSize <= incl_len, `Invalid radiotap header size: ${radiotapSize.toString(16)}`)
-    let pktData = new Uint8Array(arrayBuffer, off+radiotapSize, incl_len-radiotapSize)
-
-    const frameControl = pktData[0] | (pktData[1] << 8);
-    const type = (frameControl >> 2) & 0b11;
-    const subtype = (frameControl >> 4) & 0b1111;
-    const hdrLen = calc80211HeaderLength(frameControl, type, subtype)
-    const { bssid, sta, essid } = parseAddressesAndEssid(pktData, hdrLen, { type, subtype })
-    if (essid) {
-      bssidToEssid[bytesToHex(bssid)] = essid
-    }
-    const eapolData = parseEapolFrame(pktData, hdrLen)
-    if (eapolData) {
-      const pmkid = extractPMKID(pktData, eapolData.eapolOffset)
-      if (pmkid) {
-        pmkidFrames.push({ pmkid, ts: tsSec, bssid: bytesToHex(bssid), sta: bytesToHex(sta), essid })
-      }
-      eapolFrames.push({...eapolData, ts: tsSec, bssid: bytesToHex(bssid), sta: bytesToHex(sta), essid })
-    }
-    
+    let pktData = new Uint8Array(arrayBuffer, off, incl_len)
+    parse80211packet(pktData, { network, le, ts, eapolFrames, pmkidFrames, bssidToEssid })
     off += incl_len
   }
   assert_weak(off === view.byteLength, '[PCAP] file is cut in the middle of packet')
   eapolFrames.sort((a, b) => a.ts - b.ts)
 
+  return { eapolFrames, pmkidFrames, bssidToEssid }
+}
+
+function parse80211packet(pktData, { network, le, ts, eapolFrames, pmkidFrames, bssidToEssid }) {
+  let radiotapSize = 0
+  if (network === 119) { radiotapSize = new DataView(pktData.buffer, pktData.byteOffset).getUint32(4, le) }
+  if (network === 127) { radiotapSize = new DataView(pktData.buffer, pktData.byteOffset).getUint16(2, le) }
+  assert(radiotapSize >= 0 && radiotapSize < pktData.length, `Invalid radiotap header size: ${radiotapSize.toString(16)}`)
+  pktData = pktData.subarray(radiotapSize)
+  const frameControl = pktData[0] | (pktData[1] << 8);
+  const type = (frameControl >> 2) & 0b11;
+  const subtype = (frameControl >> 4) & 0b1111;
+  const hdrLen = calc80211HeaderLength(frameControl, type, subtype)
+  const { bssid, sta, essid } = parseAddressesAndEssid(pktData, hdrLen, { type, subtype })
+  if (essid) {
+    bssidToEssid[bytesToHex(bssid)] = essid
+  }
+  const eapolData = parseEapolFrame(pktData, hdrLen)
+  if (eapolData) {
+    const pmkid = extractPMKID(pktData, eapolData.eapolOffset)
+    if (pmkid) {
+      pmkidFrames.push({ pmkid, ts, bssid: bytesToHex(bssid), sta: bytesToHex(sta), essid })
+    }
+    eapolFrames.push({...eapolData, ts, bssid: bytesToHex(bssid), sta: bytesToHex(sta), essid })
+  }
+}
+
+function parsePcapng(arrayBuffer, view) {
+  let offset = 0
+  const len = view.byteLength
+  let network = null
+  let packetCount = 0
+
+  const eapolFrames = []
+  const pmkidFrames = []
+  const bssidToEssid = {}
+  while (offset + 8 <= len) {
+    const blockType = view.getUint32(offset, true)
+    const blockTotalLength = view.getUint32(offset + 4, true)
+    if (blockTotalLength < 12 || offset + blockTotalLength > len) break
+
+    switch (blockType) {
+      case 0x00000001: {
+        network = view.getUint16(offset + 8, true)
+        break
+      }
+      case 0x00000006: {
+        assert(network === 105 || network === 127 || network === 119, `[PCAP] this is not wifi capture (network=${network})`)
+        const ts = (view.getUint32(offset + 12, true) * 0x100000000 + view.getUint32(offset + 16, true)) / 1_000_000
+        assert_weak(ts > 1000000000 && ts < 1800000000, `[PCAP] timestamp ${ts} is outside 2001-2027 window`)
+        const capturedLen = view.getUint32(offset + 20, true)
+        const packetData = new Uint8Array(arrayBuffer, offset + 28, capturedLen)
+        parse80211packet(packetData, { network, le: true, ts, eapolFrames, pmkidFrames, bssidToEssid })
+        packetCount++
+        break
+      }
+      case 0x00000003:
+        console.warn('TODO Simple Packet Block parse - skipped')
+        break
+      default:
+        break
+    }
+    offset += blockTotalLength;
+  }
   return { eapolFrames, pmkidFrames, bssidToEssid }
 }
 
