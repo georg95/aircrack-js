@@ -14,7 +14,7 @@ TODO:
 - [x] .hc22000 file support
 - [x] .pcapng file support
 - [x] Auto batch size adjustment
-- [ ] Select password file
+- [x] Select password file
 - [ ] MD5 legacy auth
 - [ ] WEP crack mode
 - [ ] Autovectorization to AVX2/AVX512

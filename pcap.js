@@ -1,3 +1,16 @@
+async function parsePcapFile(file) {
+  return new Promise(resolve => {
+    var reader = new FileReader();
+    reader.onload = function() {
+      try {
+        resolve(parsePcap(this.result))
+      } catch(e) {
+        resolve({ error: e.message })
+      }
+    }
+    reader.readAsArrayBuffer(file);
+  })
+}
 
 function parsePcap(arrayBuffer) {
   const view = new DataView(arrayBuffer)

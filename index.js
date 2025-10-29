@@ -1,34 +1,22 @@
 let LOADED_HASHES = {}
 let MODE = 'cpu'
+let CUSTOM_PASSWORDS_LIST = []
+let fileNames = new Set()
 
 document.addEventListener('DOMContentLoaded', () => {
   window.pcap_files.onchange = async (e) => {
     if (e.target.files.length === 0) {
       return
     }
-    async function parsePcapFile(file) {
-      return new Promise(resolve => {
-        var reader = new FileReader();
-        reader.onload = function() {
-          try {
-            resolve(parsePcap(this.result))
-          } catch(e) {
-            resolve({ error: e.message })
-          }
-        }
-        reader.readAsArrayBuffer(file);
-      })
-    }
     let allEAPOLframes = []
     let allPMKIDframes = []
     let allBssidToEssid = {}
-    let fileNames = []
     await Promise.all(Array.from(e.target.files).filter(f => f.name.endsWith('.cap') || f.name.endsWith('.pcap')).map(async f => {
       const { error, eapolFrames, pmkidFrames, bssidToEssid } = await parsePcapFile(f)
       if (error) {
-        fileNames.push(`${f.name}: ${error}`)
+        fileNames.add(`${f.name}: ${error}`)
       } else {
-        fileNames.push(f.name)
+        fileNames.add(f.name)
         allBssidToEssid = { ...allBssidToEssid, ...bssidToEssid }
         allEAPOLframes = allEAPOLframes.concat(eapolFrames)
         allPMKIDframes = allPMKIDframes.concat(pmkidFrames)
@@ -41,21 +29,21 @@ document.addEventListener('DOMContentLoaded', () => {
       return new Promise(resolve => {
         var reader = new FileReader()
         reader.onload = function() {
-          const text = new TextDecoder().decode(this.result)
+          const text = this.result
           const hc22000Lines = text.split('\n').filter(x => x)
           for (let hc22000line of hc22000Lines) {
             const essid = hexToString(hc22000line.split('*')[5])
             if (!essid) {
-              fileNames.push(`${file.name}: Invalid hc22000 format`)
+              fileNames.add(`${file.name}: Invalid hc22000 format`)
               resolve()
               return
             }
             hc22000Hashes[essid] = hc22000line
           }
-          fileNames.push(file.name)
+          fileNames.add(file.name)
           resolve()
         }
-        reader.readAsArrayBuffer(file);
+        reader.readAsText(file)
       })
     }))
     setHashes({ ...handshakes, ...pmkids, ...hc22000Hashes })
@@ -69,7 +57,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (resText === '') {
       resText = 'No EAPOL/PMKID detected'
     }
-    window.pcap_files_view.innerText = fileNames.join('\n') + '\n\n' + resText
+    Array.from(e.target.files).filter(f => f.name.endsWith('.txt')).forEach(f => {
+      if (CUSTOM_PASSWORDS_LIST.findIndex((f2) => f.name === f2.name) === -1) {
+        CUSTOM_PASSWORDS_LIST.push(f)
+      }
+      fileNames.add(f.name)
+    })
+    window.pcap_files_view.innerText = Array.from(fileNames.keys()).join('\n') + '\n\n' + resText
   }
 
   async function setDevices() {
@@ -111,7 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setDevices()
 
   function setHashes(hashes) {
-    LOADED_HASHES = hashes
+    LOADED_HASHES = { ...LOADED_HASHES, ...hashes }
     window.select_essid.innerHTML = ''
     for (let essid in LOADED_HASHES) {
       const option = document.createElement('option')
@@ -128,7 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.start_btn.onclick = async () => {
     window.start_btn.style.display = 'none'
     window.stop_btn.style.display = 'block'
-    const { stop, next } = await filePasswords_stream([
+    const { stop, next } = await filePasswords_stream(CUSTOM_PASSWORDS_LIST.length > 0 ? CUSTOM_PASSWORDS_LIST : [
       { url: 'https://georg95.github.io/SecLists/Passwords/Default-Credentials/Routers/0ALL-USERNAMES-AND-PASSWORDS.txt', filePasswords: 75 },
       { url: 'https://georg95.github.io/SecLists/Passwords/Default-Credentials/default-passwords.txt', filePasswords: 439 },
       { url: 'https://georg95.github.io/SecLists/Passwords/Default-Credentials/cirt-net_collection.txt', filePasswords: 312 },
@@ -234,7 +228,7 @@ async function getPasswords(file) {
   let ended = false
 
   const MAX_PASSLEN = 64
-  let used = 0, skipped = 0
+  let used = 0, skipped = 0, readBytes = 0
   async function batch(passwordsCount) {
     if (ended) return null
     const buf32 = new Uint32Array(Math.ceil(passwordsCount * (MAX_PASSLEN + 4) / 4))
@@ -250,7 +244,8 @@ async function getPasswords(file) {
         if (done) {
           ended = true
           const word = partialBuf.subarray(partialBufIndex)
-          if (word.length >= 8 && passlen < MAX_PASSLEN) {
+          readBytes += word.length + 1
+          if (word.length >= 8 && word.length < MAX_PASSLEN) {
             buf32[count++] = curOffset
             passwordsBuf.set(word, curOffset)
             passwordsBuf[curOffset + word.length] = 10
@@ -268,6 +263,7 @@ async function getPasswords(file) {
         continue
       }
       const passlen = newLine - partialBufIndex
+      readBytes += passlen + 1
       if (passlen >= 8 && passlen < MAX_PASSLEN) {
         buf32[count++] = curOffset
         passwordsBuf.set(partialBuf.subarray(partialBufIndex, newLine + 1), curOffset)
@@ -278,8 +274,10 @@ async function getPasswords(file) {
     }
 
     return {
-      name: file.url.split('/').reverse()[0],
-      progress: used / file.filePasswords,
+      name: file.url ? file.url.split('/').reverse()[0] : file.name,
+      progress: file.filePasswords ?
+        used / file.filePasswords :
+        readBytes / file.size,
       buf: passwordsBuf,
       buf32,
       count
