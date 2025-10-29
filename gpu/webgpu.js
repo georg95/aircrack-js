@@ -82,7 +82,7 @@ async function webGPUinit({ BUF_SIZE, WORKGROUP_SIZE=64 }) {
     let shader = null
     async function compile(handshakeData) {
         assert(handshakeData.version === 1 || handshakeData.version === 2, `unsupported handshakeData version: ${handshakeData.version}`)
-        let pbkdf2Code = (await fetch('pbkdf2_eapol.wgsl').then(r => r.text()))
+        let pbkdf2Code = (await fetch('gpu/pbkdf2_eapol.wgsl').then(r => r.text()))
             .replaceAll('WORKGROUP_SIZE', WORKGROUP_SIZE)
             .replaceAll('ESSID_HASHDATA__', u32toWgsl2d(handshakeData.essidBuf))
             .replaceAll('PMK_NAME_BUF__', u32toWgsl(handshakeData.pmkNameBuf || Array(16).fill(0)))

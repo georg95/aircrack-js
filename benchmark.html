@@ -4,8 +4,6 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Aircrack web benchmark</title>
-  <script src="webgpu.js"></script>
-  <script src="wasm-simd.js"></script>
 </head>
     <style>
         html, body {
@@ -61,6 +59,20 @@ window.benchmark.onclick = async () => {
     await gpu_benchmark()
     log('\n✅ DONE')
     window.benchmark.style.display = ''
+}
+
+function log(text, clear=false) {
+    if (clear) window.output.innerHTML = ''
+    window.output.innerHTML += text + '\n'
+}
+
+function assert(cond, text) {
+    if (!cond) {
+        const err = new Error(text || 'unknown error')
+        window.errlog.innerHTML += `❌ ${text || 'unknown error'}\n`
+        err.stack = err.stack.split('\n').filter(x => !x.includes('at assert')).join('\n')
+        throw err
+    }
 }
 
 for (let mode of ['CPU', 'GPU']) {
@@ -151,4 +163,7 @@ async function gpu_benchmark() {
 }
 
 </script>
+<script src="cpu/pcap.js"></script>
+<script src="cpu/wasm-simd.js"></script>
+<script src="gpu/webgpu.js"></script>
 </html>

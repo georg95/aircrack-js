@@ -286,3 +286,17 @@ async function getPasswords(file) {
 
   return batch;
 }
+
+function log(text, clear=false) {
+    if (clear) window.output.innerHTML = ''
+    window.output.innerHTML += text + '\n'
+}
+
+function assert(cond, text) {
+    if (!cond) {
+        const err = new Error(text || 'unknown error')
+        window.errlog.innerHTML += `❌ ${text || 'unknown error'}\n`
+        err.stack = err.stack.split('\n').filter(x => !x.includes('at assert')).join('\n')
+        throw err
+    }
+}
