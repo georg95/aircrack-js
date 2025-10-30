@@ -1,4 +1,4 @@
-# [Aircrack web](https://georg95.github.io/aircrack-web/index.html)
+# [Aircrack-js](https://georg95.github.io/aircrack-js/index.html)
 
 This is aircrack-ng browser port with gpu support (via WebGPU).<br/>
 
@@ -8,9 +8,9 @@ Passwords dictionaries built-in from SecLists repo.<br />
 Or you can drop your own .txt password list<br />
 
 Speed is on par with `aicrack-ng --simd=avx` and hashcat 22000-mode for gpu <br />
-Check with [Benchmark](https://georg95.github.io/aircrack-web/benchmark.html)<br />
+Check with [Benchmark](https://georg95.github.io/aircrack-js/benchmark.html)<br />
 
-[App link](https://georg95.github.io/aircrack-web/index.html)
+[App link](https://georg95.github.io/aircrack-js/index.html)
 
 ## How to enable discrete NVidia/AMD GPU
 
