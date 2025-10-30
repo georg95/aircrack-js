@@ -89,7 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
       option.name = 'gpu'
       option.selected = true
       const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' })
-      option.innerText = `GPU: ${adapter.info.description || adapter.info.vendor}`
+      option.innerText = `GPU: ${adapter.info.description || adapter.info.vendor || '?'}`
       window.select_device.appendChild(option)
       const optionFail = document.createElement('option')
       optionFail.name = 'gpu - disabled'

@@ -113,7 +113,7 @@ async function webGPUinit({ BUF_SIZE, WORKGROUP_SIZE=64 }) {
     }
 
     return {
-        name: adapter.info.description || adapter.info.vendor,
+        name: `${adapter.info.description || adapter.info.vendor || '?'} | ${adapter.info.architecture || '?'} | ${adapter.info.backend || '?'}`,
         compile,
         inference,
         clean,
