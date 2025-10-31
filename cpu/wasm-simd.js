@@ -1,64 +1,3 @@
-async function pbkdf2_eapol_wasm({ authenticatorMIC, essidBuf, ptkBuf, eapolData, }) {
-    const SHA1_WASM = await fetch('cpu/pbkdf2_eapol.wasm').then(r => r.arrayBuffer())
-    const {instance: { exports: {
-        SSID_BUF1: { value: SSID_BUF1 },
-        SSID_BUF2: { value: SSID_BUF2 },
-        PTK_HASHDATA: { value: PTK_HASHDATA },
-        EAPOL_HASHDATA: { value: EAPOL_HASHDATA },
-        EAPOL_HASHDATA_LEN: { value: EAPOL_HASHDATA_LEN },
-        EXPECTED_MIC: { value: EXPECTED_MIC },
-        password1: { value: password1 },
-        password2: { value: password2 },
-        pbkdf1_eapol, memory: {buffer} } }} =
-    await WebAssembly.instantiate(SHA1_WASM)
-    new Uint32Array(buffer, SSID_BUF1, 16).set(essidBuf[0])
-    new Uint32Array(buffer, SSID_BUF2, 16).set(essidBuf[1])
-    new Uint32Array(buffer, PTK_HASHDATA, 32).set(ptkBuf[0])
-    new Uint32Array(buffer, PTK_HASHDATA, 32).set(ptkBuf[1], 16)
-    const EAPOL_HASHDATA_BUF = new Uint32Array(buffer, EAPOL_HASHDATA, 64)
-    for (var i = 0; i < eapolData.length; i++) {
-        EAPOL_HASHDATA_BUF.set(eapolData[i], i * 16)
-    }
-    const eapol_data_len = new Uint32Array(buffer, EAPOL_HASHDATA_LEN, 1)
-    eapol_data_len[0] = eapolData.length
-    new Uint32Array(buffer, EXPECTED_MIC, 5).set(authenticatorMIC)
-
-    const password1b = new Uint8Array(buffer, password1, 64);
-    const password2b = new Uint8Array(buffer, password2, 64);
-
-    return function hash(pass1, pass2) {
-        password1b.set(pass1)
-        password2b.set(pass2)
-        return pbkdf1_eapol(pass1.length, pass2.length)
-    }
-}
-
-async function pbkdf2_pmkid_wasm({ pmkid, essidBuf, pmkNameBuf }) {
-    const SHA1_WASM = await fetch('cpu/pbkdf2_eapol.wasm').then(r => r.arrayBuffer())
-    const {instance: { exports: {
-        SSID_BUF1: { value: SSID_BUF1 },
-        SSID_BUF2: { value: SSID_BUF2 },
-        PMK_NAME_BUF: { value: PMK_NAME_BUF },
-        EXPECTED_PMKID: { value: EXPECTED_PMKID },
-        password1: { value: password1 },
-        password2: { value: password2 },
-        pbkdf2_pmkid, memory: {buffer} } }} =
-    await WebAssembly.instantiate(SHA1_WASM)
-    new Uint32Array(buffer, SSID_BUF1, 16).set(essidBuf[0])
-    new Uint32Array(buffer, SSID_BUF2, 16).set(essidBuf[1])
-    new Uint32Array(buffer, PMK_NAME_BUF, 16).set(pmkNameBuf)
-    new Uint32Array(buffer, EXPECTED_PMKID, 4).set(pmkid)
-
-    const password1b = new Uint8Array(buffer, password1, 64);
-    const password2b = new Uint8Array(buffer, password2, 64);
-
-    return function hash(pass1, pass2) {
-        password1b.set(pass1)
-        password2b.set(pass2)
-        return pbkdf2_pmkid(pass1.length, pass2.length)
-    }
-}
-
 async function startWasmWorker(wasm, handshakeData, requestWork, onEnd, id) {
     const workerCode = `
     async function pbkdf2_eapol_wasm(WASM_CODE, { authenticatorMIC, essidBuf, ptkBuf, eapolData, }) {
@@ -178,7 +117,7 @@ async function bruteCpu(hc22000line, passwordStream, progress, THREADS=navigator
     let avgHashrate = 0
     let curFile = ''
     let curProgress = 0
-    const update = setInterval(() => progress({ THREADS, file: curFile, progress: curProgress, avgHashrate }), 200)
+    const update = setInterval(() => progress?.({ THREADS, file: curFile, progress: curProgress, avgHashrate }), 200)
     const password = await new Promise(async (resolve, reject) => { try {
         const handshakeData = parseHashcat22000(hc22000line)
         const wasm = await fetch('cpu/pbkdf2_eapol.wasm').then(r => r.arrayBuffer())

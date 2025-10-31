@@ -87,17 +87,23 @@ for (let mode of ['CPU', 'GPU']) {
     window.bench_result.appendChild(tr)
 }
 
-async function cpu_benchmark() {
-    const enc = new TextEncoder();
-    const password1 = enc.encode('MOM12344')
-    const password2 = enc.encode('MOM12345')
+async function cpu_test_correctness() {
+    const buf32 = new Uint32Array(20)
+    const buf = new Uint8Array(buf32.buffer, buf32.byteOffset, buf32.byteLength)
+    buf.set(new TextEncoder().encode('MOM12344\nMOM12345\n'), 8)
+    buf32[0] = 8
+    buf32[1] = 8 + 9    
     const HC22000_EAPOL = 'WPA*02*6baba51340c8a83e2081af3b4bb64da9*00212972a319*002100ab55a9*4d4f4d31*14312696ea57a1c3ea614f7cb68b1455c3009c59a76d349b9a0ffe0d166d6ac2*0103007502010a0000000000000000000f069a5c6e3d9ef06f21e87023d72b4e05a3bac5338ac28495fdb8ce8566957bcb000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001630140100000fac020100000fac040100000fac020800*00'
     const HC22000_PMKID = 'WPA*01*18050615d464b8a38d329c99f9eb4bb4*00212972a319*002100ab55a9*4d4f4d31***'
-    const pbkdf2_eapol = await pbkdf2_eapol_wasm(parseHashcat22000(HC22000_EAPOL))
-    const pbkdf2_pmkid = await pbkdf2_pmkid_wasm(parseHashcat22000(HC22000_PMKID))
-    assert(pbkdf2_eapol(password1, password2) === 1, 'CPU wasm/eapol test failed')
-    assert(pbkdf2_pmkid(password1, password2) === 1, 'CPU wasm/pmkid test failed')
-
+    let batch = [{ buf, buf32, count: 2 }]
+    const password1 = await bruteCpu(HC22000_EAPOL, () => batch.pop(), null, 1)
+    batch = [{ buf, buf32, count: 2 }]
+    const password2 = await bruteCpu(HC22000_PMKID, () => batch.pop(), null, 1)
+    assert(password1 === 'MOM12345', 'CPU wasm/eapol test failed')
+    assert(password2 === 'MOM12345', 'CPU wasm/pmkid test failed')
+}
+async function cpu_benchmark() {
+    cpu_test_correctness()
     let BATCH_SIZE = 500, spinner = 0, THREADS = navigator.hardwareConcurrency || 4, hashrate
     const tr = document.getElementById('CPU')
     tr.childNodes[1].innerText = `0s` // TODO measure
@@ -144,10 +150,12 @@ async function gpu_benchmark() {
         tr.childNodes[2].innerText = batchSize
         const { buf, buf32 } = numericPasswords(0, batchSize, PASSWORD.length)
         buf.set(new TextEncoder().encode(PASSWORD + '\n'), buf32[35])
+        let times = []
         for (let x = 0; x < 3; x++) {
             const start = performance.now()
             out = await gpu.inference({ inp: buf32, count: batchSize })
-            time = Math.min(time, (performance.now() - start) / 1000)
+            times.push((performance.now() - start) / 1000)
+            time = times.reduce((a, b) => a + b, 0) / times.length
             maxSpeed = Math.max(maxSpeed, (batchSize / time) | 0)
             tr.childNodes[3].innerText = `${(maxSpeed / 1000).toFixed(1)} kH/s ${SPINNER[(spinner++)%SPINNER.length]}`
         }
@@ -157,7 +165,7 @@ async function gpu_benchmark() {
             return
         }
 
-        if (time > 1) { break }
+        if (time > 0.5) { break }
     }
     tr.childNodes[3].innerText = `${(maxSpeed / 1000).toFixed(1)} kH/s`
     gpu.clean()
