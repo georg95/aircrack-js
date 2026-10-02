@@ -153,7 +153,7 @@ async function bruteGPU(hc22000line, passwordStream, progress) {
                 if (curBatchHashrates.length > 3) { curBatchHashrates.shift() }
                 avgHashrate = curBatchHashrates.reduce((a, b) => a + b, 0) / curBatchHashrates.length | 0
                 const avgShaderTime = BATCH_SIZE / avgHashrate
-                if (curBatchHashrates.length === 3 && avgHashrate > prevBatchSizeHashrate * 1.05 && avgShaderTime < 0.5) {
+                if (BATCH_SIZE < MAX_BATCH_SIZE && curBatchHashrates.length === 3 && avgHashrate > prevBatchSizeHashrate * 1.05 && avgShaderTime < 0.5) {
                     BATCH_SIZE *= 2
                     prevBatchSizeHashrate = avgHashrate
                     curBatchHashrates = []
