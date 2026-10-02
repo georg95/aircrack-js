@@ -237,8 +237,7 @@ async function getPasswords(file) {
     var count = 0
     var curOffset = passwordsCount * 4
     while (count < passwordsCount) {
-      const newLine = partialBuf.indexOf(10, partialBufIndex)
-      if (partialBuf[newLine - 1] === 0x0D) { throw new Error('\\r detected') }
+      let newLine = partialBuf.indexOf(0x0A, partialBufIndex)
       if (newLine === -1) {
         const { done, value } = await reader.read()
         if (done) {

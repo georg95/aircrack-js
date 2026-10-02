@@ -955,7 +955,10 @@ var IV_ = [_]u32{ 0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0 };
 pub fn get_seed(paswd: []const u8, xor: u8) [5]u32 {
     var main_buf: [16]u32 = [_]u32{0} ** 16;
     for (0..64) |i| {
-        const pbyte = if (i < paswd.len) paswd[i] else 0;
+        var pbyte = if (i < paswd.len) paswd[i] else 0;
+        if (pbyte == 0x0D) {
+            pbyte = 0;
+        }
         main_buf[@divFloor(i, 4)] += @as(u32, pbyte ^ xor) << @truncate((3 - (i % 4)) * 8);
     }
     return sha1(main_buf[0..], IV_);
@@ -1048,10 +1051,11 @@ test "sha1" {
 
 test "pbkdf2" {
     const passwd1 = "11234223";
+    const passwd2_withr = "11234226\r";
     const passwd2 = "11234226";
     const ssid = "Netgear";
     setSsidBuf(ssid);
-    const pmk = pbkdf2(passwd1, passwd2);
+    const pmk = pbkdf2(passwd1, passwd2_withr);
     var dk_bytes: [64]u8 = undefined;
     for (0..16) |i| mem.writeInt(u32, dk_bytes[i * 4 ..][0..4], pmk[i], .big);
     try std.testing.expectEqualSlices(u8, mnemoToSeed(passwd1, ssid)[0..32], dk_bytes[0..32]);

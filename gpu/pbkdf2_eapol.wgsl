@@ -181,7 +181,7 @@ fn initPasswordBuffer(passOffset: u32) -> array<u32, 16> {
   for (var i = 0u; i < 64; i++) {
     var offset = passOffset + i;
     var b = (input[offset / 4] >> ((offset % 4) * 8)) & 0xff;
-    if (b == 0x0Au) { break; }
+    if (b == 0x0Au || b == 0x0Du) { break; }
     setByteArr(&password, i, b);
   }
   return password;
